@@ -1,0 +1,245 @@
+package decimal
+
+import (
+	"database/sql/driver"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"strings"
+)
+
+const (
+	PrecisionFixedSize = 4
+)
+
+// StringWithTrailingZeros returns the string with trailing zeros in the decimal representation.
+func (d Decimal) StringWithTrailingZeros() string {
+	return d.string(false)
+}
+
+// String removes trailing zeros from the decimal representation.
+func (d Decimal) String() string {
+	return d.string(true)
+}
+
+func (d Decimal) string(stripTrailingZeros bool) string {
+	d = initializeIfNeeded(d)
+
+	// Fast path for zero preserves explicit scale only when requested.
+	if d.IsZero() {
+		if !stripTrailingZeros && d.prec > 0 {
+			return "0." + strings.Repeat("0", d.prec)
+		}
+		return "0"
+	}
+
+	if stripTrailingZeros {
+		d = d.StripTrailingZeros()
+	}
+	if d.prec == 0 {
+		return d.i.String()
+	}
+
+	isNeg := d.IsNegative()
+
+	if isNeg {
+		d = Decimal{
+			i:    new(big.Int).Neg(d.i),
+			prec: d.prec,
+		}
+	}
+
+	intStr := d.i.String()
+	inputSize := len(intStr)
+
+	var bzStr []byte
+	// case 1, purely decimal
+	if inputSize <= d.prec {
+		bzStr = make([]byte, 0, d.prec+2+1) // +2 for "0." and +1 for "-" if negative
+
+		// add "-" if needed
+		if isNeg {
+			bzStr = append(bzStr, byte('-'))
+		}
+		// add "0."
+		bzStr = append(bzStr, byte('0'), byte('.'))
+
+		// add "0"s to the left of the decimal point
+		for i := 0; i < d.prec-inputSize; i++ {
+			bzStr = append(bzStr, byte('0'))
+		}
+		bzStr = append(bzStr, intStr...)
+	} else {
+		bzStr = make([]byte, 0, inputSize+1+1) // +1 for "." and +1 for "-" if negative
+
+		// add "-" if needed
+		if isNeg {
+			bzStr = append(bzStr, byte('-'))
+		}
+		// add integer part
+		decPointPlace := inputSize - d.prec
+		bzStr = append(bzStr, intStr[:decPointPlace]...)
+		// add "."
+		bzStr = append(bzStr, byte('.'))
+		// add fractional part
+		bzStr = append(bzStr, intStr[decPointPlace:]...)
+	}
+	return string(bzStr)
+}
+
+// MarshalJSON implements json.Marshaler
+func (d Decimal) MarshalJSON() ([]byte, error) {
+	if d.i == nil {
+		return json.Marshal(nil)
+	}
+	return json.Marshal(d.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler
+func (d *Decimal) UnmarshalJSON(bz []byte) error {
+	if len(bz) == len("null") && string(bz) == "null" {
+		return nil
+	}
+
+	if d.i == nil {
+		d.i = new(big.Int)
+	}
+
+	var text string
+	err := json.Unmarshal(bz, &text)
+	if err != nil {
+		switch err.(type) {
+		case *json.UnmarshalTypeError:
+			dTemp, err := NewFromString(string(bz))
+			if err == nil {
+				*d = dTemp
+				return nil
+			}
+		}
+		return err
+	}
+
+	newDec, err := NewFromString(text)
+	if err != nil {
+		return err
+	}
+
+	*d = newDec
+	return nil
+}
+
+// MarshalYAML implements yaml.Marshaler
+func (d Decimal) MarshalYAML() (any, error) {
+	return d.String(), nil
+}
+
+// MarshalBinary implements encoding.BinaryMarshaler interface
+func (d Decimal) MarshalBinary() (data []byte, err error) {
+	if d.i == nil {
+		return nil, nil
+	}
+	d = d.StripTrailingZeros()
+	precBytes := make([]byte, PrecisionFixedSize)
+	binary.BigEndian.PutUint32(precBytes, uint32(d.prec))
+
+	var intBytes []byte
+	if intBytes, err = d.i.GobEncode(); err != nil {
+		return nil, err
+	}
+
+	data = append(precBytes, intBytes...)
+	return data, nil
+}
+
+// UnmarshalBinary implements encoding.BinaryUnmarshaler interface.
+func (d *Decimal) UnmarshalBinary(data []byte) error {
+	if len(data) == 0 {
+		d.i = &big.Int{}
+		return nil
+	}
+
+	if len(data) < PrecisionFixedSize {
+		return fmt.Errorf("error decoding binary %v: expected at least %d bytes, got %v",
+			data, PrecisionFixedSize, len(data))
+	}
+
+	// Read the precision as fixed-width bytes.
+	d.prec = int(binary.BigEndian.Uint32(data[:PrecisionFixedSize]))
+
+	// Read the big.Int.
+	d.i = new(big.Int)
+	return d.i.GobDecode(data[PrecisionFixedSize:])
+}
+
+// Value implements driver.Valuer interface for database serialization.
+func (d Decimal) Value() (driver.Value, error) {
+	d = initializeIfNeeded(d)
+	return d.String(), nil
+}
+
+// Scan implements sql.Scanner interface for database deserialization.
+func (d *Decimal) Scan(value any) error {
+	if value == nil {
+		d.i = nil
+		d.prec = 0
+		return nil
+	}
+	// first try to see if the data is stored in database as a Numeric datatype
+	switch v := value.(type) {
+
+	case float32:
+		*d = NewFromFloat64(float64(v))
+		return nil
+
+	case float64:
+		// numeric in sqlite3 sends us float64
+		*d = NewFromFloat64(v)
+		return nil
+
+	case int64:
+		// at least in sqlite3 when the value is 0 in db, the data is sent
+		// to us as an int64 instead of a float64 ...
+		*d = New(v)
+		return nil
+
+	default:
+		// default is trying to interpret value stored as string
+		text, err := unquoteIfQuoted(v)
+		if err != nil {
+			return err
+		}
+		bTemp, err := NewFromString(text)
+		if err != nil {
+			return err
+		}
+		*d = bTemp
+		return nil
+	}
+}
+
+// Marshal implements the gogo proto custom type interface.
+func (d Decimal) Marshal() ([]byte, error) {
+	return d.MarshalBinary()
+}
+
+// MarshalTo implements the gogo proto custom type interface.
+func (d Decimal) MarshalTo(data []byte) (n int, err error) {
+	bz, err := d.MarshalBinary()
+	if err != nil {
+		return
+	}
+	n = copy(data, bz)
+	return
+}
+
+// Unmarshal implements the gogo proto custom type interface.
+func (d *Decimal) Unmarshal(data []byte) error {
+	return d.UnmarshalBinary(data)
+}
+
+// Size implements the gogo proto custom type interface.
+func (d Decimal) Size() int {
+	bz, _ := d.Marshal()
+	return len(bz)
+}
