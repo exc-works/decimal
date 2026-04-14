@@ -193,6 +193,56 @@ func ExampleDecimal_Quo_differentPrecision() {
 	// 61.50
 }
 
+func ExampleDecimal_Floor() {
+	fmt.Println(MustFromString("-1.2").Floor())
+	// Output:
+	// -2
+}
+
+func ExampleDecimal_Ceil() {
+	fmt.Println(MustFromString("-1.2").Ceil())
+	// Output:
+	// -1
+}
+
+func ExampleDecimal_Truncate() {
+	fmt.Println(MustFromString("-1.9").Truncate())
+	// Output:
+	// -1
+}
+
+func ExampleDecimal_Round() {
+	fmt.Println(MustFromString("2.5").Round())
+	fmt.Println(MustFromString("3.5").Round())
+	// Output:
+	// 2
+	// 4
+}
+
+func ExampleDecimal_FloorWithPrec() {
+	fmt.Println(MustFromString("-1.239").FloorWithPrec(2))
+	// Output:
+	// -1.24
+}
+
+func ExampleDecimal_CeilWithPrec() {
+	fmt.Println(MustFromString("-1.239").CeilWithPrec(2))
+	// Output:
+	// -1.23
+}
+
+func ExampleDecimal_TruncateWithPrec() {
+	fmt.Println(MustFromString("-1.239").TruncateWithPrec(2))
+	// Output:
+	// -1.23
+}
+
+func ExampleDecimal_RoundWithPrec() {
+	fmt.Println(MustFromString("1.245").RoundWithPrec(2))
+	// Output:
+	// 1.24
+}
+
 func ExampleDecimal_IntPart() {
 	fmt.Println(MustFromString("12.34").IntPart())
 	// Output:
@@ -204,6 +254,31 @@ func ExampleDecimal_Remainder() {
 	fmt.Println(i, f)
 	// Output:
 	// 12 34
+}
+
+func ExampleDecimal_IsInteger() {
+	fmt.Println(MustFromString("1.000").IsInteger())
+	// Output:
+	// true
+}
+
+func ExampleDecimal_HasFraction() {
+	fmt.Println(MustFromString("1.25").HasFraction())
+	// Output:
+	// true
+}
+
+func ExampleDecimal_QuoRem() {
+	q, r := MustFromString("-7").QuoRem(New(3))
+	fmt.Println(q, r)
+	// Output:
+	// -2 -1
+}
+
+func ExampleDecimal_Mod() {
+	fmt.Println(MustFromString("-7").Mod(New(3)))
+	// Output:
+	// -1
 }
 
 func ExampleDecimal_Power() {
@@ -258,6 +333,27 @@ func ExampleDecimal_MustNonNegative() {
 	fmt.Println(New(1).MustNonNegative())
 	// Output:
 	// 1
+}
+
+func ExampleDecimal_Float64() {
+	v, exact := MustFromString("0.5").Float64()
+	fmt.Println(v, exact)
+	// Output:
+	// 0.5 true
+}
+
+func ExampleDecimal_Int64() {
+	v, ok := MustFromString("42.0").Int64()
+	fmt.Println(v, ok)
+	// Output:
+	// 42 true
+}
+
+func ExampleDecimal_Uint64() {
+	v, ok := MustFromString("42.0").Uint64()
+	fmt.Println(v, ok)
+	// Output:
+	// 42 true
 }
 
 func ExampleDecimal_Cmp() {

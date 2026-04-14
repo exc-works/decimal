@@ -1,6 +1,7 @@
 package decimal
 
 import (
+	"math"
 	"math/big"
 	"strings"
 	"testing"
@@ -151,6 +152,10 @@ func TestNegativePrecisionPanics(t *testing.T) {
 		{name: "new from uint64", fn: func() { NewFromUint64(1, -1) }},
 		{name: "new from big int with prec", fn: func() { NewFromBigIntWithPrec(big.NewInt(1), -1) }},
 		{name: "rescale", fn: func() { New(1).Rescale(-1, RoundDown) }},
+		{name: "floor with prec", fn: func() { New(1).FloorWithPrec(-1) }},
+		{name: "ceil with prec", fn: func() { New(1).CeilWithPrec(-1) }},
+		{name: "truncate with prec", fn: func() { New(1).TruncateWithPrec(-1) }},
+		{name: "round with prec", fn: func() { New(1).RoundWithPrec(-1) }},
 	}
 
 	for _, tc := range tests {
@@ -683,6 +688,393 @@ func TestDecimalRescale(t *testing.T) {
 			t.Fatalf("Precision() = %d, want 0", got.Precision())
 		}
 	})
+}
+
+func TestDecimalIntegerRoundingMethods(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        Decimal
+		wantFloor    string
+		wantCeil     string
+		wantTruncate string
+		wantRound    string
+	}{
+		{
+			name:         "positive fractional",
+			input:        mustDecimal(t, "1.9"),
+			wantFloor:    "1",
+			wantCeil:     "2",
+			wantTruncate: "1",
+			wantRound:    "2",
+		},
+		{
+			name:         "negative fractional",
+			input:        mustDecimal(t, "-1.9"),
+			wantFloor:    "-2",
+			wantCeil:     "-1",
+			wantTruncate: "-1",
+			wantRound:    "-2",
+		},
+		{
+			name:         "half even tie rounds down to even",
+			input:        mustDecimal(t, "2.5"),
+			wantFloor:    "2",
+			wantCeil:     "3",
+			wantTruncate: "2",
+			wantRound:    "2",
+		},
+		{
+			name:         "half even tie rounds up to even",
+			input:        mustDecimal(t, "3.5"),
+			wantFloor:    "3",
+			wantCeil:     "4",
+			wantTruncate: "3",
+			wantRound:    "4",
+		},
+		{
+			name:         "negative half even tie",
+			input:        mustDecimal(t, "-2.5"),
+			wantFloor:    "-3",
+			wantCeil:     "-2",
+			wantTruncate: "-2",
+			wantRound:    "-2",
+		},
+		{
+			name:         "trailing zeros integer",
+			input:        mustDecimal(t, "2.000"),
+			wantFloor:    "2",
+			wantCeil:     "2",
+			wantTruncate: "2",
+			wantRound:    "2",
+		},
+		{
+			name:         "zero value",
+			input:        Decimal{},
+			wantFloor:    "0",
+			wantCeil:     "0",
+			wantTruncate: "0",
+			wantRound:    "0",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cases := []struct {
+				name string
+				got  Decimal
+				want string
+			}{
+				{name: "Floor", got: tc.input.Floor(), want: tc.wantFloor},
+				{name: "Ceil", got: tc.input.Ceil(), want: tc.wantCeil},
+				{name: "Truncate", got: tc.input.Truncate(), want: tc.wantTruncate},
+				{name: "Round", got: tc.input.Round(), want: tc.wantRound},
+			}
+
+			for _, method := range cases {
+				t.Run(method.name, func(t *testing.T) {
+					want := mustDecimal(t, method.want)
+					assertDecimalEqual(t, method.got, want)
+					if method.got.Precision() != 0 {
+						t.Fatalf("%s precision = %d, want 0", method.name, method.got.Precision())
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDecimalRoundingMethodsWithPrecision(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        Decimal
+		prec         int
+		wantFloor    string
+		wantCeil     string
+		wantTruncate string
+		wantRound    string
+		wantPrec     int
+	}{
+		{
+			name:         "positive value",
+			input:        mustDecimal(t, "1.239"),
+			prec:         2,
+			wantFloor:    "1.23",
+			wantCeil:     "1.24",
+			wantTruncate: "1.23",
+			wantRound:    "1.24",
+			wantPrec:     2,
+		},
+		{
+			name:         "negative value",
+			input:        mustDecimal(t, "-1.239"),
+			prec:         2,
+			wantFloor:    "-1.24",
+			wantCeil:     "-1.23",
+			wantTruncate: "-1.23",
+			wantRound:    "-1.24",
+			wantPrec:     2,
+		},
+		{
+			name:         "half even tie",
+			input:        mustDecimal(t, "1.245"),
+			prec:         2,
+			wantFloor:    "1.24",
+			wantCeil:     "1.25",
+			wantTruncate: "1.24",
+			wantRound:    "1.24",
+			wantPrec:     2,
+		},
+		{
+			name:         "increase precision",
+			input:        mustDecimal(t, "1.2"),
+			prec:         4,
+			wantFloor:    "1.2",
+			wantCeil:     "1.2",
+			wantTruncate: "1.2",
+			wantRound:    "1.2",
+			wantPrec:     4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cases := []struct {
+				name string
+				got  Decimal
+				want string
+			}{
+				{name: "FloorWithPrec", got: tc.input.FloorWithPrec(tc.prec), want: tc.wantFloor},
+				{name: "CeilWithPrec", got: tc.input.CeilWithPrec(tc.prec), want: tc.wantCeil},
+				{name: "TruncateWithPrec", got: tc.input.TruncateWithPrec(tc.prec), want: tc.wantTruncate},
+				{name: "RoundWithPrec", got: tc.input.RoundWithPrec(tc.prec), want: tc.wantRound},
+			}
+
+			for _, method := range cases {
+				t.Run(method.name, func(t *testing.T) {
+					want := mustDecimal(t, method.want)
+					assertDecimalEqual(t, method.got, want)
+					if method.got.Precision() != tc.wantPrec {
+						t.Fatalf("%s precision = %d, want %d", method.name, method.got.Precision(), tc.wantPrec)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDecimalIsIntegerAndHasFraction(t *testing.T) {
+	tests := []struct {
+		name         string
+		input        Decimal
+		wantInteger  bool
+		wantFraction bool
+	}{
+		{name: "integer", input: New(1), wantInteger: true, wantFraction: false},
+		{name: "trailing zeros", input: mustDecimal(t, "1.000"), wantInteger: true, wantFraction: false},
+		{name: "fraction", input: mustDecimal(t, "1.2"), wantInteger: false, wantFraction: true},
+		{name: "negative trailing zeros", input: mustDecimal(t, "-2.0"), wantInteger: true, wantFraction: false},
+		{name: "zero value", input: Decimal{}, wantInteger: true, wantFraction: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.input.IsInteger(); got != tc.wantInteger {
+				t.Fatalf("IsInteger() = %v, want %v", got, tc.wantInteger)
+			}
+			if got := tc.input.HasFraction(); got != tc.wantFraction {
+				t.Fatalf("HasFraction() = %v, want %v", got, tc.wantFraction)
+			}
+			if tc.input.HasFraction() == tc.input.IsInteger() {
+				t.Fatal("HasFraction() should be the inverse of IsInteger()")
+			}
+		})
+	}
+}
+
+func TestDecimalQuoRem(t *testing.T) {
+	tests := []struct {
+		name      string
+		left      Decimal
+		right     Decimal
+		wantQuo   string
+		wantRem   string
+		wantRecom string
+	}{
+		{
+			name:      "positive integers",
+			left:      New(7),
+			right:     New(3),
+			wantQuo:   "2",
+			wantRem:   "1",
+			wantRecom: "7",
+		},
+		{
+			name:      "positive over negative",
+			left:      New(7),
+			right:     New(-3),
+			wantQuo:   "-2",
+			wantRem:   "1",
+			wantRecom: "7",
+		},
+		{
+			name:      "negative over positive",
+			left:      New(-7),
+			right:     New(3),
+			wantQuo:   "-2",
+			wantRem:   "-1",
+			wantRecom: "-7",
+		},
+		{
+			name:      "negative integers",
+			left:      New(-7),
+			right:     New(-3),
+			wantQuo:   "2",
+			wantRem:   "-1",
+			wantRecom: "-7",
+		},
+		{
+			name:      "fractional operands",
+			left:      mustDecimal(t, "5.5"),
+			right:     mustDecimal(t, "2.0"),
+			wantQuo:   "2",
+			wantRem:   "1.5",
+			wantRecom: "5.5",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotQuo, gotRem := tc.left.QuoRem(tc.right)
+
+			assertDecimalEqual(t, gotQuo, mustDecimal(t, tc.wantQuo))
+			assertDecimalEqual(t, gotRem, mustDecimal(t, tc.wantRem))
+
+			recombined := gotQuo.Mul2(tc.right).Add(gotRem)
+			assertDecimalEqual(t, recombined, mustDecimal(t, tc.wantRecom))
+		})
+	}
+}
+
+func TestDecimalQuoRemPanicsOnZeroDivisor(t *testing.T) {
+	assertPanic(t, func() {
+		_, _ = New(1).QuoRem(Zero)
+	})
+}
+
+func TestDecimalMod(t *testing.T) {
+	tests := []struct {
+		name  string
+		left  Decimal
+		right Decimal
+		want  string
+	}{
+		{name: "positive integers", left: New(7), right: New(3), want: "1"},
+		{name: "positive over negative", left: New(7), right: New(-3), want: "1"},
+		{name: "negative over positive", left: New(-7), right: New(3), want: "-1"},
+		{name: "negative integers", left: New(-7), right: New(-3), want: "-1"},
+		{name: "fractional operands", left: mustDecimal(t, "5.5"), right: mustDecimal(t, "2.0"), want: "1.5"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assertDecimalEqual(t, tc.left.Mod(tc.right), mustDecimal(t, tc.want))
+		})
+	}
+}
+
+func TestDecimalModPanicsOnZeroDivisor(t *testing.T) {
+	assertPanic(t, func() {
+		_ = New(1).Mod(Zero)
+	})
+}
+
+func TestDecimalFloat64(t *testing.T) {
+	overflow := NewFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(400), nil))
+
+	tests := []struct {
+		name      string
+		input     Decimal
+		want      float64
+		wantExact bool
+		checkInf  bool
+		infSign   int
+	}{
+		{name: "exact integer", input: New(42), want: 42, wantExact: true},
+		{name: "exact fraction", input: mustDecimal(t, "0.5"), want: 0.5, wantExact: true},
+		{name: "inexact fraction", input: mustDecimal(t, "0.1"), want: 0.1, wantExact: false},
+		{name: "zero value", input: Decimal{}, want: 0, wantExact: true},
+		{name: "positive overflow", input: overflow, want: math.Inf(1), wantExact: false, checkInf: true, infSign: 1},
+		{name: "negative overflow", input: overflow.Neg(), want: math.Inf(-1), wantExact: false, checkInf: true, infSign: -1},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, exact := tc.input.Float64()
+			if tc.checkInf {
+				if !math.IsInf(got, tc.infSign) {
+					t.Fatalf("Float64() = %v, want %v", got, tc.want)
+				}
+			} else if got != tc.want {
+				t.Fatalf("Float64() = %v, want %v", got, tc.want)
+			}
+			if exact != tc.wantExact {
+				t.Fatalf("Float64() exact = %v, want %v", exact, tc.wantExact)
+			}
+		})
+	}
+}
+
+func TestDecimalInt64(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  Decimal
+		want   int64
+		wantOK bool
+	}{
+		{name: "exact integer", input: New(42), want: 42, wantOK: true},
+		{name: "exact trailing zeros", input: mustDecimal(t, "42.0"), want: 42, wantOK: true},
+		{name: "negative integer", input: New(-42), want: -42, wantOK: true},
+		{name: "max int64", input: mustDecimal(t, "9223372036854775807"), want: math.MaxInt64, wantOK: true},
+		{name: "min int64", input: mustDecimal(t, "-9223372036854775808"), want: math.MinInt64, wantOK: true},
+		{name: "non integer", input: mustDecimal(t, "42.5"), want: 0, wantOK: false},
+		{name: "overflow", input: mustDecimal(t, "9223372036854775808"), want: 0, wantOK: false},
+		{name: "zero value", input: Decimal{}, want: 0, wantOK: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.input.Int64()
+			if got != tc.want || ok != tc.wantOK {
+				t.Fatalf("Int64() = (%d, %v), want (%d, %v)", got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}
+
+func TestDecimalUint64(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  Decimal
+		want   uint64
+		wantOK bool
+	}{
+		{name: "exact integer", input: New(42), want: 42, wantOK: true},
+		{name: "exact trailing zeros", input: mustDecimal(t, "42.0"), want: 42, wantOK: true},
+		{name: "max uint64", input: mustDecimal(t, "18446744073709551615"), want: math.MaxUint64, wantOK: true},
+		{name: "negative integer", input: New(-1), want: 0, wantOK: false},
+		{name: "non integer", input: mustDecimal(t, "42.5"), want: 0, wantOK: false},
+		{name: "overflow", input: mustDecimal(t, "18446744073709551616"), want: 0, wantOK: false},
+		{name: "zero value", input: Decimal{}, want: 0, wantOK: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := tc.input.Uint64()
+			if got != tc.want || ok != tc.wantOK {
+				t.Fatalf("Uint64() = (%d, %v), want (%d, %v)", got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
 }
 
 func TestDecimalStripTrailingZeros(t *testing.T) {

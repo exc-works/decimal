@@ -382,6 +382,81 @@ func (d Decimal) QuoDown(d2 Decimal) Decimal {
 	return d.Quo(d2, RoundDown)
 }
 
+// Floor returns the greatest integer value less than or equal to d.
+func (d Decimal) Floor() Decimal {
+	return d.FloorWithPrec(0)
+}
+
+// FloorWithPrec returns d rounded toward negative infinity at the given precision.
+// It panics if prec is negative.
+func (d Decimal) FloorWithPrec(prec int) Decimal {
+	requireNonNegativePrecision(prec)
+	d = initializeIfNeeded(d)
+	truncated := d.Rescale(prec, RoundDown)
+	if d.IsNegative() && d.Cmp(truncated) < 0 {
+		return truncated.SubRaw(1)
+	}
+	return truncated
+}
+
+// Ceil returns the least integer value greater than or equal to d.
+func (d Decimal) Ceil() Decimal {
+	return d.CeilWithPrec(0)
+}
+
+// CeilWithPrec returns d rounded toward positive infinity at the given precision.
+// It panics if prec is negative.
+func (d Decimal) CeilWithPrec(prec int) Decimal {
+	requireNonNegativePrecision(prec)
+	d = initializeIfNeeded(d)
+	truncated := d.Rescale(prec, RoundDown)
+	if d.IsPositive() && d.Cmp(truncated) > 0 {
+		return truncated.AddRaw(1)
+	}
+	return truncated
+}
+
+// Truncate returns d rounded toward zero to an integer value.
+func (d Decimal) Truncate() Decimal {
+	return d.TruncateWithPrec(0)
+}
+
+// TruncateWithPrec returns d rounded toward zero at the given precision.
+// It panics if prec is negative.
+func (d Decimal) TruncateWithPrec(prec int) Decimal {
+	return d.Rescale(prec, RoundDown)
+}
+
+// Round returns d rounded to the nearest integer using RoundHalfEven.
+func (d Decimal) Round() Decimal {
+	return d.RoundWithPrec(0)
+}
+
+// RoundWithPrec returns d rounded to the given precision using RoundHalfEven.
+// It panics if prec is negative.
+func (d Decimal) RoundWithPrec(prec int) Decimal {
+	return d.Rescale(prec, RoundHalfEven)
+}
+
+// QuoRem returns the quotient truncated toward zero and the corresponding remainder.
+// It panics if d2 is zero.
+func (d Decimal) QuoRem(d2 Decimal) (Decimal, Decimal) {
+	d1, d2, maxPrec := rescalePair(d, d2)
+	if d2.i.Sign() == 0 {
+		panic("division by zero")
+	}
+
+	quo, rem := new(big.Int).QuoRem(d1.i, d2.i, new(big.Int))
+	return Decimal{i: quo, prec: 0}, Decimal{i: rem, prec: maxPrec}
+}
+
+// Mod returns the same remainder component as QuoRem (truncated division).
+// It panics if d2 is zero.
+func (d Decimal) Mod(d2 Decimal) Decimal {
+	_, rem := d.QuoRem(d2)
+	return rem
+}
+
 // IntPart returns the integer part of d.
 func (d Decimal) IntPart() *big.Int {
 	intPart, _ := d.Remainder()
@@ -747,6 +822,17 @@ func (d Decimal) IsPositive() bool {
 	return d.Sign() > 0
 }
 
+// IsInteger returns true if d has no fractional part.
+func (d Decimal) IsInteger() bool {
+	_, fractionPart := d.Remainder()
+	return fractionPart.Sign() == 0
+}
+
+// HasFraction returns true if d has a fractional part.
+func (d Decimal) HasFraction() bool {
+	return !d.IsInteger()
+}
+
 // Neg returns the negated decimal.
 func (d Decimal) Neg() Decimal {
 	d = initializeIfNeeded(d)
@@ -768,6 +854,34 @@ func (d Decimal) BigInt() *big.Int {
 	d = initializeIfNeeded(d)
 	cp := new(big.Int)
 	return cp.Set(d.i)
+}
+
+// Float64 returns the nearest float64 value for d and whether it is exact.
+func (d Decimal) Float64() (float64, bool) {
+	d = initializeIfNeeded(d)
+	rat := new(big.Rat).SetFrac(
+		new(big.Int).Set(d.i),
+		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
+	)
+	return rat.Float64()
+}
+
+// Int64 returns d as an int64 if it is an exact integer in range.
+func (d Decimal) Int64() (int64, bool) {
+	intPart, fractionPart := d.Remainder()
+	if fractionPart.Sign() != 0 || !intPart.IsInt64() {
+		return 0, false
+	}
+	return intPart.Int64(), true
+}
+
+// Uint64 returns d as a uint64 if it is a non-negative exact integer in range.
+func (d Decimal) Uint64() (uint64, bool) {
+	intPart, fractionPart := d.Remainder()
+	if fractionPart.Sign() != 0 || intPart.Sign() < 0 || !intPart.IsUint64() {
+		return 0, false
+	}
+	return intPart.Uint64(), true
 }
 
 // BitLen returns the bit length of d's underlying integer representation.

@@ -88,6 +88,8 @@ func main() {
 - `QuoWithPrec(Decimal, prec, decimal.RoundingMode)`
 - `Quo(Decimal, decimal.RoundingMode)`
 - `QuoDown(Decimal)`
+- `QuoRem(Decimal)`：返回截断商和余数
+- `Mod(Decimal)`：返回与 `QuoRem` 一致的余数
 - `Power(int64)`
 - `Sqrt() (Decimal, error)`
 - `ApproxRoot(int64) (Decimal, error)`
@@ -97,6 +99,9 @@ func main() {
 
 - `RescaleDown(prec)`：按 `RoundDown` 调整到目标精度
 - `Rescale(prec, decimal.RoundingMode)`：按指定舍入模式调整到目标精度
+- `TruncateWithPrec(prec)` / `RoundWithPrec(prec)`：向零截断 / half-even 到目标精度
+- `FloorWithPrec(prec)` / `CeilWithPrec(prec)`：向负无穷 / 向正无穷到目标精度
+- `Truncate()` / `Round()` / `Floor()` / `Ceil()`：以上能力在 `prec=0` 下的便捷形式
 - `StripTrailingZeros()`：移除尾随零
 - `SignificantFigures(figures, decimal.RoundingMode)`：保留指定有效数字
 
@@ -114,8 +119,11 @@ func main() {
 - `IntPart()`：返回整数部分 `*big.Int`
 - `Remainder()`：返回整数部分和小数部分
 - `Sign()`、`IsNegative()`、`IsZero()`、`IsNotZero()`、`IsPositive()`
+- `IsInteger()`、`HasFraction()`
 - `Neg()`、`Abs()`
 - `BigInt()`：返回底层 `*big.Int` 的副本
+- `Float64() (float64, bool)`：转换为 `float64`，并返回是否精确
+- `Int64() (int64, bool)` / `Uint64() (uint64, bool)`：仅在“可精确表示”时返回 `ok=true`
 - `BitLen()`：返回底层整数的 bit 长度
 - `Precision()`：返回当前精度
 - `MustNonNegative()`：负数会 panic
