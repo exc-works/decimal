@@ -27,9 +27,13 @@ var (
 var (
 	precisionMultipliers [cacheMaxPrecision + 1]*big.Int
 
-	Zero    = New(0)
-	One     = New(1)
-	Ten     = New(10)
+	// Zero is the decimal zero value.
+	Zero = New(0)
+	// One is the decimal one value.
+	One = New(1)
+	// Ten is the decimal ten value.
+	Ten = New(10)
+	// Hundred is the decimal one hundred value.
 	Hundred = New(100)
 )
 
@@ -56,26 +60,30 @@ func safeGetPrecisionMultiplier(prec int) *big.Int {
 	return new(big.Int).Exp(tenInt, big.NewInt(int64(prec)), nil)
 }
 
+// New returns a Decimal created from value with precision 0.
 func New(value int64) Decimal {
 	return NewFromBigInt(big.NewInt(value))
 }
 
+// NewFromInt returns a Decimal created from value with precision 0.
 func NewFromInt(value int) Decimal {
 	return NewFromBigInt(big.NewInt(int64(value)))
 }
 
+// NewWithPrec returns a Decimal created from value with the given precision.
+// It panics if prec is negative.
 func NewWithPrec(value int64, prec int) Decimal {
 	requireNonNegativePrecision(prec)
 	return NewFromBigIntWithPrec(big.NewInt(value), prec)
 }
 
+// NewFromFloat64 returns a Decimal parsed from value.
 func NewFromFloat64(value float64) Decimal {
 	return MustFromString(strconv.FormatFloat(value, 'f', -1, 64))
 }
 
-// NewWithAppendPrec create a new Decimal from value, and append number of zeros to make it fit the required precision
-// If `value` is 1, `prec` is 2, then return 1.00.
-// If `value` is 1, `prec` is 18, then return 1.000000000000000000
+// NewWithAppendPrec returns a Decimal created from value with prec trailing zeros appended.
+// It panics if prec is negative.
 func NewWithAppendPrec(value int64, prec int) Decimal {
 	requireNonNegativePrecision(prec)
 	return Decimal{
@@ -84,6 +92,8 @@ func NewWithAppendPrec(value int64, prec int) Decimal {
 	}
 }
 
+// NewFromUintWithAppendPrec returns a Decimal created from value with prec trailing zeros appended.
+// It panics if prec is negative.
 func NewFromUintWithAppendPrec(value uint64, prec int) Decimal {
 	requireNonNegativePrecision(prec)
 	return Decimal{
@@ -92,12 +102,13 @@ func NewFromUintWithAppendPrec(value uint64, prec int) Decimal {
 	}
 }
 
-// NewFromBigInt create a new Decimal from big integer assuming whole numbers
+// NewFromBigInt returns a Decimal created from value with precision 0.
 func NewFromBigInt(value *big.Int) Decimal {
 	return NewFromBigIntWithPrec(value, 0)
 }
 
-// NewFromBigIntWithPrec create a new Decimal from big integer assuming whole numbers
+// NewFromBigIntWithPrec returns a Decimal created from value with the given precision.
+// It panics if precision is negative.
 func NewFromBigIntWithPrec(value *big.Int, precision int) Decimal {
 	requireNonNegativePrecision(precision)
 	return Decimal{
@@ -106,6 +117,8 @@ func NewFromBigIntWithPrec(value *big.Int, precision int) Decimal {
 	}
 }
 
+// NewFromInt64 returns a Decimal created from value with the given precision.
+// It panics if precision is negative.
 func NewFromInt64(value int64, precision int) Decimal {
 	requireNonNegativePrecision(precision)
 	return Decimal{
@@ -114,7 +127,8 @@ func NewFromInt64(value int64, precision int) Decimal {
 	}
 }
 
-// NewFromUint64 create a new Decimal from uint64 value.
+// NewFromUint64 returns a Decimal created from value with the given precision.
+// It panics if precision is negative.
 func NewFromUint64(value uint64, precision int) Decimal {
 	requireNonNegativePrecision(precision)
 	return Decimal{
@@ -123,26 +137,10 @@ func NewFromUint64(value uint64, precision int) Decimal {
 	}
 }
 
-// NewFromString create a new Decimal from decimal string.
-// valid must come in the form:
+// NewFromString returns a Decimal parsed from str.
 //
-//	(-) whole integers (.) decimal integers
-//
-// examples of acceptable input include:
-//
-//	-123.456
-//	456.7890
-//	345
-//	-456789
-//	1.23456e3
-//	1.23456E3
-//	123456e-3
-//	123456E-3
-//
-// NOTE - An error will return if more decimal places
-// are provided in the string than the constant Precision.
-//
-// CONTRACT - This function does not mutate the input str.
+// It accepts plain decimal values and scientific notation, and returns an
+// error for empty or malformed input.
 func NewFromString(str string) (d Decimal, err error) {
 	str = strings.TrimSpace(str)
 	if len(str) == 0 {
@@ -249,6 +247,7 @@ func NewFromString(str string) (d Decimal, err error) {
 	}, nil
 }
 
+// MustFromString returns a Decimal parsed from str and panics if parsing fails.
 func MustFromString(str string) Decimal {
 	d, err := NewFromString(str)
 	if err != nil {
@@ -257,6 +256,7 @@ func MustFromString(str string) Decimal {
 	return d
 }
 
+// Add returns d + d2, rescaled to the larger precision of the two values.
 func (d Decimal) Add(d2 Decimal) Decimal {
 	d1, d2, maxPrec := rescalePair(d, d2)
 
@@ -266,10 +266,12 @@ func (d Decimal) Add(d2 Decimal) Decimal {
 	}
 }
 
+// SafeAdd returns d + d2 and panics if the result is negative.
 func (d Decimal) SafeAdd(d2 Decimal) Decimal {
 	return d.Add(d2).requireNonNegative()
 }
 
+// AddRaw returns d + i while preserving d's precision.
 func (d Decimal) AddRaw(i int64) Decimal {
 	d = initializeIfNeeded(d)
 	return Decimal{
@@ -278,6 +280,7 @@ func (d Decimal) AddRaw(i int64) Decimal {
 	}
 }
 
+// Sub returns d - d2, rescaled to the larger precision of the two values.
 func (d Decimal) Sub(d2 Decimal) Decimal {
 	d1, d2, maxPrec := rescalePair(d, d2)
 
@@ -287,10 +290,12 @@ func (d Decimal) Sub(d2 Decimal) Decimal {
 	}
 }
 
+// SafeSub returns d - d2 and panics if the result is negative.
 func (d Decimal) SafeSub(d2 Decimal) Decimal {
 	return d.Sub(d2).requireNonNegative()
 }
 
+// SubRaw returns d - i while preserving d's precision.
 func (d Decimal) SubRaw(i int64) Decimal {
 	d = initializeIfNeeded(d)
 	return Decimal{
@@ -299,9 +304,7 @@ func (d Decimal) SubRaw(i int64) Decimal {
 	}
 }
 
-// Mul multiplies two decimals and returns the result.
-//
-// The precision of the result is the maximum of the precisions of the two decimals.
+// Mul returns d * d2 rounded according to roundingMode.
 func (d Decimal) Mul(d2 Decimal, roundingMode RoundingMode) Decimal {
 	d1, d2, maxPrec := rescalePair(d, d2)
 
@@ -311,13 +314,12 @@ func (d Decimal) Mul(d2 Decimal, roundingMode RoundingMode) Decimal {
 	}.round(roundingMode)
 }
 
+// MulDown returns d * d2 rounded down.
 func (d Decimal) MulDown(d2 Decimal) Decimal {
 	return d.Mul(d2, RoundDown)
 }
 
-// Mul2 multiplies two decimals and returns the result.
-//
-// The precision of the result is the sum of the precisions of the two decimals.
+// Mul2 returns d * d2 using the sum of the input precisions.
 func (d Decimal) Mul2(d2 Decimal) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
@@ -331,7 +333,8 @@ func (d Decimal) Mul2(d2 Decimal) Decimal {
 	}
 }
 
-// QuoWithPrec divides two decimals and returns the result with the specified precision.
+// QuoWithPrec returns d / d2 rounded to prec decimal places using roundingMode.
+// It panics if prec is negative, d2 is zero, or roundingMode is invalid.
 func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
@@ -343,6 +346,8 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 	return d.Quo(d2, roundingMode).Rescale(prec, roundingMode)
 }
 
+// Quo returns d / d2 rounded according to roundingMode.
+// It panics if d2 is zero or roundingMode is invalid.
 func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
@@ -372,23 +377,24 @@ func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
 	}.round(roundingMode)
 }
 
+// QuoDown returns d / d2 rounded down.
 func (d Decimal) QuoDown(d2 Decimal) Decimal {
 	return d.Quo(d2, RoundDown)
 }
 
-// IntPart returns integer part.
+// IntPart returns the integer part of d.
 func (d Decimal) IntPart() *big.Int {
 	intPart, _ := d.Remainder()
 	return intPart
 }
 
-// Remainder returns integer part and fractional part.
+// Remainder returns the integer part and fractional part of d.
 func (d Decimal) Remainder() (intPart *big.Int, fractionPart *big.Int) {
 	d = initializeIfNeeded(d)
 	return new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
 }
 
-// Power returns a result of raising to integer power.
+// Power returns d raised to the given integer power.
 func (d Decimal) Power(power int64) Decimal {
 	d = initializeIfNeeded(d)
 	if power == 0 {
@@ -411,12 +417,15 @@ func (d Decimal) Power(power int64) Decimal {
 	return resultD.Mul2(tmp).Rescale(d.prec, RoundHalfEven)
 }
 
-// Sqrt returns the square root using ApproxRoot(2).
+// Sqrt returns an approximate square root of d using iterative refinement.
 // It returns an error for negative inputs.
 func (d Decimal) Sqrt() (guess Decimal, err error) {
 	return d.ApproxRoot(2)
 }
 
+// ApproxRoot returns an approximate root of d for the given root value.
+// It uses iterative refinement and stops when converged or when maxIterations is reached.
+// It returns an error if root <= 0 or if d is negative and root is even.
 func (d Decimal) ApproxRoot(root int64) (guess Decimal, err error) {
 	if root <= 0 {
 		return Decimal{}, fmt.Errorf("root must be greater than 0")
@@ -465,7 +474,9 @@ func (d Decimal) ApproxRoot(root int64) (guess Decimal, err error) {
 	return
 }
 
-// Log2 returns log2.
+// Log2 returns an approximate log base 2 of d via iterative refinement.
+// The iteration is bounded by maxIterations.
+// It panics if d is not greater than 0.
 func (d Decimal) Log2() Decimal {
 	d = initializeIfNeeded(d)
 	if d.Sign() <= 0 {
@@ -507,11 +518,15 @@ func (d Decimal) Log2() Decimal {
 	return resultDec
 }
 
+// RescaleDown returns d rescaled to prec decimal places using RoundDown.
+// It panics if prec is negative.
 func (d Decimal) RescaleDown(prec int) Decimal {
 	d = initializeIfNeeded(d)
 	return d.Rescale(prec, RoundDown)
 }
 
+// Rescale returns d rescaled to prec decimal places using roundingMode.
+// It panics if prec is negative or roundingMode is invalid.
 func (d Decimal) Rescale(prec int, roundingMode RoundingMode) Decimal {
 	requireNonNegativePrecision(prec)
 	d = initializeIfNeeded(d)
@@ -592,36 +607,59 @@ func (d Decimal) StripTrailingZeros() Decimal {
 	}
 }
 
-// SignificantFigures returns a Decimal with the specified number of significant figures
+// SignificantFigures returns d rounded to figures significant figures.
+// It may round within the fractional part or to tens/hundreds on the integer part.
+// It panics if figures is not greater than 0.
 func (d Decimal) SignificantFigures(figures int, roundingMode RoundingMode) Decimal {
 	d = initializeIfNeeded(d)
 	if figures <= 0 {
 		panic("figures must be greater than 0")
 	}
-	if d.prec == 0 || d.prec <= figures {
+	if d.IsZero() {
 		return d
 	}
 
 	absD := d.Abs()
 	str := absD.String()
-	splits := strings.Split(str, ".")
-	if splits[0] != "0" {
-		figures -= len(splits[0])
-		if figures < 0 {
-			figures = 0
-		}
-		return d.Rescale(min(figures, d.prec), roundingMode)
+	intPart, fracPart, _ := strings.Cut(str, ".")
+
+	targetPrec := 0
+	if intPart != "0" {
+		targetPrec = figures - len(intPart)
 	} else {
-		for i := 0; i < len(splits[1]); i++ {
-			if splits[1][i] != '0' {
-				figures += i
-				return d.Rescale(min(figures, d.prec), roundingMode)
+		firstNonZero := -1
+		for i := 0; i < len(fracPart); i++ {
+			if fracPart[i] != '0' {
+				firstNonZero = i
+				break
 			}
 		}
+		if firstNonZero == -1 {
+			return d
+		}
+		targetPrec = firstNonZero + figures
 	}
-	return d
+
+	if targetPrec >= d.prec {
+		return d
+	}
+	if targetPrec >= 0 {
+		return d.Rescale(targetPrec, roundingMode)
+	}
+
+	// Round to tens/hundreds/etc. when significant figures fall within the integer part.
+	roundShift := d.prec - targetPrec
+	rounded := Decimal{
+		i:    new(big.Int).Set(d.i),
+		prec: roundShift,
+	}.round(roundingMode)
+	return Decimal{
+		i:    new(big.Int).Mul(rounded.i, safeGetPrecisionMultiplier(-targetPrec)),
+		prec: 0,
+	}
 }
 
+// MustNonNegative returns d and panics if d is negative.
 func (d Decimal) MustNonNegative() Decimal {
 	d = initializeIfNeeded(d)
 	return d.requireNonNegative()
@@ -634,88 +672,88 @@ func (d Decimal) requireNonNegative() Decimal {
 	return d
 }
 
-// Cmp compares x and y and returns:
+// Cmp compares d and d2 and returns:
 //
-//	-1 if x <  y
-//	 0 if x == y
-//	+1 if x >  y
+//	-1 if d < d2
+//	 0 if d == d2
+//	+1 if d > d2
 func (d Decimal) Cmp(d2 Decimal) int {
 	d1, d2, _ := rescalePair(d, d2)
 	return d1.i.Cmp(d2.i)
 }
 
-// Equal returns equal other value
+// Equal returns true if d and d2 are equal.
 func (d Decimal) Equal(d2 Decimal) bool {
 	return d.Cmp(d2) == 0
 }
 
-// NotEqual returns not equal other value
+// NotEqual returns true if d and d2 are not equal.
 func (d Decimal) NotEqual(d2 Decimal) bool {
 	return d.Cmp(d2) != 0
 }
 
-// GT greater than other value
+// GT returns true if d is greater than d2.
 func (d Decimal) GT(d2 Decimal) bool {
 	return d.Cmp(d2) > 0
 }
 
-// GTE greater than or equal other value
+// GTE returns true if d is greater than or equal to d2.
 func (d Decimal) GTE(d2 Decimal) bool {
 	return d.Cmp(d2) >= 0
 }
 
-// LT less than other value
+// LT returns true if d is less than d2.
 func (d Decimal) LT(d2 Decimal) bool {
 	return d.Cmp(d2) < 0
 }
 
-// LTE less than or equal other value
+// LTE returns true if d is less than or equal to d2.
 func (d Decimal) LTE(d2 Decimal) bool {
 	return d.Cmp(d2) <= 0
 }
 
 // Sign returns:
 //
-//	-1 if x <  0
-//	 0 if x == 0
-//	+1 if x >  0
+//	-1 if d < 0
+//	 0 if d == 0
+//	+1 if d > 0
 func (d Decimal) Sign() int {
 	d = initializeIfNeeded(d)
 	return d.i.Sign()
 }
 
-// IsNegative returns is negative value
+// IsNegative returns true if d is negative.
 func (d Decimal) IsNegative() bool {
 	return d.Sign() < 0
 }
 
-// IsNil returns true if the decimal is nil
+// IsNil returns true if d has no underlying value.
 func (d Decimal) IsNil() bool {
 	return d.i == nil
 }
 
-// IsZero returns true if the decimal is zero or nil
+// IsZero returns true if d is zero or nil.
 func (d Decimal) IsZero() bool {
 	return d.IsNil() || d.Sign() == 0
 }
 
-// IsNotZero returns true if the decimal is not zero
+// IsNotZero returns true if d is not zero.
 func (d Decimal) IsNotZero() bool {
 	return !d.IsZero()
 }
 
-// IsPositive returns is positive value
+// IsPositive returns true if d is positive.
 func (d Decimal) IsPositive() bool {
 	return d.Sign() > 0
 }
 
-// Neg reverse the decimal sign
+// Neg returns the negated decimal.
 func (d Decimal) Neg() Decimal {
 	d = initializeIfNeeded(d)
 	return Decimal{new(big.Int).Neg(d.i), d.prec}
 }
 
-// Abs returns absolute value
+// Abs returns the absolute value of d.
 func (d Decimal) Abs() Decimal {
 	d = initializeIfNeeded(d)
 	if d.IsNegative() {
@@ -725,22 +763,25 @@ func (d Decimal) Abs() Decimal {
 	return d
 }
 
-// BigInt returns a copy of the underlying big.Int.
+// BigInt returns a copy of the underlying big.Int value.
 func (d Decimal) BigInt() *big.Int {
 	d = initializeIfNeeded(d)
 	cp := new(big.Int)
 	return cp.Set(d.i)
 }
 
+// BitLen returns the bit length of d's underlying integer representation.
 func (d Decimal) BitLen() int {
 	d = initializeIfNeeded(d)
 	return d.i.BitLen()
 }
 
+// Precision returns the number of decimal places in d.
 func (d Decimal) Precision() int {
 	return d.prec
 }
 
+// Max returns the larger of d and d2.
 func (d Decimal) Max(d2 Decimal) Decimal {
 	if d.GT(d2) {
 		return d
@@ -748,6 +789,7 @@ func (d Decimal) Max(d2 Decimal) Decimal {
 	return d2
 }
 
+// Min returns the smaller of d and d2.
 func (d Decimal) Min(d2 Decimal) Decimal {
 	if d.LT(d2) {
 		return d

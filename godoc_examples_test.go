@@ -246,8 +246,12 @@ func ExampleDecimal_StripTrailingZeros() {
 
 func ExampleDecimal_SignificantFigures() {
 	fmt.Println(MustFromString("123.456").SignificantFigures(4, RoundHalfEven))
+	fmt.Println(MustFromString("123.456").SignificantFigures(3, RoundHalfEven))
+	fmt.Println(MustFromString("123.456").SignificantFigures(2, RoundHalfEven))
 	// Output:
-	// 123.456
+	// 123.5
+	// 123
+	// 120
 }
 
 func ExampleDecimal_MustNonNegative() {

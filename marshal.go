@@ -88,7 +88,8 @@ func (d Decimal) string(stripTrailingZeros bool) string {
 	return string(bzStr)
 }
 
-// MarshalJSON implements json.Marshaler
+// MarshalJSON implements json.Marshaler.
+// It encodes a decimal as a JSON string and encodes an uninitialized value as null.
 func (d Decimal) MarshalJSON() ([]byte, error) {
 	if d.i == nil {
 		return json.Marshal(nil)
@@ -96,7 +97,8 @@ func (d Decimal) MarshalJSON() ([]byte, error) {
 	return json.Marshal(d.String())
 }
 
-// UnmarshalJSON implements json.Unmarshaler
+// UnmarshalJSON implements json.Unmarshaler.
+// It accepts JSON strings and JSON numbers, treats null as a no-op, and updates d in place.
 func (d *Decimal) UnmarshalJSON(bz []byte) error {
 	if len(bz) == len("null") && string(bz) == "null" {
 		return nil
@@ -129,12 +131,14 @@ func (d *Decimal) UnmarshalJSON(bz []byte) error {
 	return nil
 }
 
-// MarshalYAML implements yaml.Marshaler
+// MarshalYAML implements yaml.Marshaler by returning the decimal string form.
 func (d Decimal) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
-// MarshalBinary implements encoding.BinaryMarshaler interface
+// MarshalBinary implements encoding.BinaryMarshaler.
+// The binary layout is 4 bytes of big-endian precision followed by big.Int Gob bytes.
+// It strips trailing zeros before encoding and returns nil for an uninitialized value.
 func (d Decimal) MarshalBinary() (data []byte, err error) {
 	if d.i == nil {
 		return nil, nil
@@ -152,7 +156,9 @@ func (d Decimal) MarshalBinary() (data []byte, err error) {
 	return data, nil
 }
 
-// UnmarshalBinary implements encoding.BinaryUnmarshaler interface.
+// UnmarshalBinary implements encoding.BinaryUnmarshaler.
+// It expects the MarshalBinary layout, resets d to zero for empty input,
+// and returns an error when data is shorter than the fixed precision prefix.
 func (d *Decimal) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
 		d.i = &big.Int{}
@@ -172,13 +178,15 @@ func (d *Decimal) UnmarshalBinary(data []byte) error {
 	return d.i.GobDecode(data[PrecisionFixedSize:])
 }
 
-// Value implements driver.Valuer interface for database serialization.
+// Value implements driver.Valuer by returning the canonical decimal string form.
 func (d Decimal) Value() (driver.Value, error) {
 	d = initializeIfNeeded(d)
 	return d.String(), nil
 }
 
-// Scan implements sql.Scanner interface for database deserialization.
+// Scan implements sql.Scanner.
+// It accepts nil, float32, float64, int64, string, and []byte inputs, and updates d in place.
+// Nil input resets d to its uninitialized state.
 func (d *Decimal) Scan(value any) error {
 	if value == nil {
 		d.i = nil
@@ -218,12 +226,12 @@ func (d *Decimal) Scan(value any) error {
 	}
 }
 
-// Marshal implements the gogo proto custom type interface.
+// Marshal implements gogo-protobuf custom type marshaling via MarshalBinary.
 func (d Decimal) Marshal() ([]byte, error) {
 	return d.MarshalBinary()
 }
 
-// MarshalTo implements the gogo proto custom type interface.
+// MarshalTo implements gogo-protobuf custom type marshaling into data.
 func (d Decimal) MarshalTo(data []byte) (n int, err error) {
 	bz, err := d.MarshalBinary()
 	if err != nil {
@@ -233,12 +241,12 @@ func (d Decimal) MarshalTo(data []byte) (n int, err error) {
 	return
 }
 
-// Unmarshal implements the gogo proto custom type interface.
+// Unmarshal implements gogo-protobuf custom type unmarshaling via UnmarshalBinary.
 func (d *Decimal) Unmarshal(data []byte) error {
 	return d.UnmarshalBinary(data)
 }
 
-// Size implements the gogo proto custom type interface.
+// Size implements gogo-protobuf custom type sizing based on Marshal output.
 func (d Decimal) Size() int {
 	bz, _ := d.Marshal()
 	return len(bz)

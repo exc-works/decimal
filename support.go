@@ -24,7 +24,8 @@ const (
 	RoundUnnecessary
 )
 
-// MostSignificantBit returns the index of the most significant set bit.
+// MostSignificantBit returns the index of the most significant set bit in x.
+// It returns 0 for x == 0 and panics if x < 0.
 func MostSignificantBit(x *big.Int) uint {
 	if x.Sign() < 0 {
 		panic("MostSignificantBit of not positive number")

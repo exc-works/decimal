@@ -727,6 +727,14 @@ func TestDecimalSignificantFigures(t *testing.T) {
 		{name: "unitary", value: mustDecimal(t, "1.001001"), figures: 2, mode: RoundUp, want: "1.1"},
 		{name: "large unitary", value: mustDecimal(t, "1111.001001"), figures: 5, mode: RoundUp, want: "1111.1"},
 		{name: "negative large unitary", value: mustDecimal(t, "-1111.001001"), figures: 5, mode: RoundUp, want: "-1111.1"},
+		{name: "round to tens", value: mustDecimal(t, "123.456"), figures: 2, mode: RoundHalfEven, want: "120"},
+		{name: "round to hundreds", value: mustDecimal(t, "123.456"), figures: 1, mode: RoundHalfEven, want: "100"},
+		{name: "round with carry expansion", value: mustDecimal(t, "999"), figures: 2, mode: RoundHalfEven, want: "1000"},
+		{name: "negative round to tens", value: mustDecimal(t, "-123.456"), figures: 2, mode: RoundHalfEven, want: "-120"},
+		{name: "round down toward zero at tens", value: mustDecimal(t, "199"), figures: 1, mode: RoundDown, want: "100"},
+		{name: "round up away from zero at tens", value: mustDecimal(t, "199"), figures: 1, mode: RoundUp, want: "200"},
+		{name: "negative round down toward zero at tens", value: mustDecimal(t, "-199"), figures: 1, mode: RoundDown, want: "-100"},
+		{name: "negative round up away from zero at tens", value: mustDecimal(t, "-199"), figures: 1, mode: RoundUp, want: "-200"},
 	}
 
 	for _, tc := range tests {
