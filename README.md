@@ -165,13 +165,12 @@ fmt.Println(d.StringWithTrailingZeros()) // 7.5000
 
 - `MarshalYAML()`：返回字符串值
 
-### Binary / protobuf / Amino
+### Binary / protobuf
 
 - `MarshalBinary()` / `UnmarshalBinary()`
 - `Marshal()` / `Unmarshal()`
 - `MarshalTo([]byte)`
 - `Size()`
-- `MarshalAmino()` / `UnmarshalAmino()`
 
 二进制格式特点：
 

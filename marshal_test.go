@@ -255,7 +255,7 @@ func TestScan(t *testing.T) {
 	})
 }
 
-func TestProtoAndAminoCompatMethods(t *testing.T) {
+func TestProtoCompatMethods(t *testing.T) {
 	original := MustFromString("9.8760")
 
 	bz, err := original.Marshal()
@@ -281,18 +281,5 @@ func TestProtoAndAminoCompatMethods(t *testing.T) {
 	}
 	if decoded.String() != "9.876" {
 		t.Fatalf("Unmarshal() = %s, want 9.876", decoded.String())
-	}
-
-	amino, err := original.MarshalAmino()
-	if err != nil {
-		t.Fatalf("MarshalAmino() returned error: %v", err)
-	}
-
-	var aminoDecoded Decimal
-	if err := aminoDecoded.UnmarshalAmino(amino); err != nil {
-		t.Fatalf("UnmarshalAmino() returned error: %v", err)
-	}
-	if aminoDecoded.String() != "9.876" {
-		t.Fatalf("UnmarshalAmino() = %s, want 9.876", aminoDecoded.String())
 	}
 }
