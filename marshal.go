@@ -219,6 +219,11 @@ func (d *Decimal) UnmarshalText(text []byte) error {
 	return nil
 }
 
+// UnmarshalParam implements gin's BindUnmarshaler by parsing decimal text.
+func (d *Decimal) UnmarshalParam(param string) error {
+	return d.UnmarshalText([]byte(param))
+}
+
 // MarshalBinary implements encoding.BinaryMarshaler.
 // The binary layout is 4 bytes of big-endian precision followed by big.Int Gob bytes.
 // It strips trailing zeros before encoding and returns nil for an uninitialized value.

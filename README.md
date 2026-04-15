@@ -186,6 +186,25 @@ If parsing results in zero, precision is normalized to `0`.
 
 - `MarshalText()`
 - `UnmarshalText()`
+- `UnmarshalParam(string)` (for gin `BindUnmarshaler`)
+
+### Gin
+
+- `ShouldBindQuery` / `ShouldBind` / `ShouldBindUri` use `UnmarshalParam(string)`
+- `ShouldBindJSON` uses `UnmarshalJSON()`
+
+Example:
+
+```go
+type Req struct {
+	Amount decimal.Decimal `form:"amount" uri:"amount" json:"amount"`
+}
+
+var req Req
+if err := c.ShouldBindQuery(&req); err != nil {
+	// handle error
+}
+```
 
 ### Binary / protobuf
 

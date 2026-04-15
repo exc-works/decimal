@@ -311,6 +311,23 @@ func TestMarshalTextAndUnmarshalText(t *testing.T) {
 			t.Fatal("UnmarshalText() expected error, got nil")
 		}
 	})
+
+	t.Run("unmarshal param", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalParam("1.2300"); err != nil {
+			t.Fatalf("UnmarshalParam() returned error: %v", err)
+		}
+		if d.StringWithTrailingZeros() != "1.2300" {
+			t.Fatalf("UnmarshalParam() = %s, want 1.2300", d.StringWithTrailingZeros())
+		}
+	})
+
+	t.Run("unmarshal param invalid", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalParam(""); err == nil {
+			t.Fatal("UnmarshalParam() expected error, got nil")
+		}
+	})
 }
 
 func TestScan(t *testing.T) {
