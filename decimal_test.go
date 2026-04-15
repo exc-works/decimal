@@ -506,6 +506,47 @@ func TestDecimalMul(t *testing.T) {
 	}
 }
 
+func TestDecimalMulExact(t *testing.T) {
+	tests := []struct {
+		name     string
+		left     Decimal
+		right    Decimal
+		want     Decimal
+		wantPrec int
+	}{
+		{
+			name:     "precision is sum of inputs",
+			left:     mustDecimal(t, "1.20"),
+			right:    mustDecimal(t, "2.30"),
+			want:     mustDecimal(t, "2.7600"),
+			wantPrec: 4,
+		},
+		{
+			name:     "mixed precision",
+			left:     mustDecimal(t, "1.234"),
+			right:    mustDecimal(t, "2.5"),
+			want:     mustDecimal(t, "3.0850"),
+			wantPrec: 4,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.left.MulExact(tc.right)
+			assertDecimalEqual(t, got, tc.want)
+			if got.Precision() != tc.wantPrec {
+				t.Fatalf("MulExact Precision() = %d, want %d", got.Precision(), tc.wantPrec)
+			}
+
+			deprecated := tc.left.Mul2(tc.right)
+			assertDecimalEqual(t, deprecated, got)
+			if deprecated.Precision() != got.Precision() {
+				t.Fatalf("Mul2 Precision() = %d, want %d", deprecated.Precision(), got.Precision())
+			}
+		})
+	}
+}
+
 func TestDecimalQuo(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1204,7 +1245,7 @@ func TestDecimalQuoRem(t *testing.T) {
 			assertDecimalEqual(t, gotQuo, mustDecimal(t, tc.wantQuo))
 			assertDecimalEqual(t, gotRem, mustDecimal(t, tc.wantRem))
 
-			recombined := gotQuo.Mul2(tc.right).Add(gotRem)
+			recombined := gotQuo.MulExact(tc.right).Add(gotRem)
 			assertDecimalEqual(t, recombined, mustDecimal(t, tc.wantRecom))
 		})
 	}

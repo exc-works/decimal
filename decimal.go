@@ -435,8 +435,8 @@ func (d Decimal) MulDown(d2 Decimal) Decimal {
 	return d.Mul(d2, RoundDown)
 }
 
-// Mul2 returns d * d2 using the sum of the input precisions.
-func (d Decimal) Mul2(d2 Decimal) Decimal {
+// MulExact returns d * d2 without rounding, using the sum of input precisions.
+func (d Decimal) MulExact(d2 Decimal) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
 	prec := int64(d.prec) + int64(d2.prec)
@@ -447,6 +447,13 @@ func (d Decimal) Mul2(d2 Decimal) Decimal {
 		i:    new(big.Int).Mul(d.i, d2.i),
 		prec: int(prec),
 	}
+}
+
+// Mul2 returns d * d2 without rounding, using the sum of input precisions.
+//
+// Deprecated: use MulExact instead.
+func (d Decimal) Mul2(d2 Decimal) Decimal {
+	return d.MulExact(d2)
 }
 
 // QuoWithPrec returns d / d2 rounded to prec decimal places using roundingMode.
@@ -600,12 +607,12 @@ func (d Decimal) Power(power int64) Decimal {
 	tmp, resultD := NewWithAppendPrec(1, d.prec), d
 	for i := power; i > 1; {
 		if i%2 != 0 {
-			tmp = tmp.Mul2(resultD)
+			tmp = tmp.MulExact(resultD)
 		}
 		i /= 2
-		resultD = resultD.Mul2(resultD)
+		resultD = resultD.MulExact(resultD)
 	}
-	return resultD.Mul2(tmp).Rescale(d.prec, RoundHalfEven)
+	return resultD.MulExact(tmp).Rescale(d.prec, RoundHalfEven)
 }
 
 // Sqrt returns an approximate square root of d using iterative refinement.

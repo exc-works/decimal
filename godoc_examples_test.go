@@ -173,8 +173,8 @@ func ExampleDecimal_MulDown() {
 	// 2.5
 }
 
-func ExampleDecimal_Mul2() {
-	fmt.Println(MustFromString("1.20").Mul2(MustFromString("2.30")).StringWithTrailingZeros())
+func ExampleDecimal_MulExact() {
+	fmt.Println(MustFromString("1.20").MulExact(MustFromString("2.30")).StringWithTrailingZeros())
 	// Output:
 	// 2.7600
 }

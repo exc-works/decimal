@@ -9,6 +9,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 - Publishing baseline artifacts: `LICENSE`, CI/release workflows, package-level docs, and contributor/security guides.
+- Added `MulExact` as the clear API name for exact multiplication and kept `Mul2` as a deprecated compatibility alias.
 
 ## [0.1.0] - 2026-04-15
 
