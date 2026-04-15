@@ -175,14 +175,14 @@ fmt.Println(b.String()) // 1.5
 
 `RoundingMode` 主要用于 `Rescale`、`Mul`、`Quo` 等“按模式舍入”的运算；`Floor`、`Ceil`、`Truncate` 是固定语义的方法。最容易混淆的是负数场景：
 
-| 场景 | 正数 `1.23` | 负数 `-1.23` | 说明 |
-| --- | --- | --- | --- |
-| `Rescale(0, decimal.RoundDown)` | `1` | `-1` | 向零舍入 |
-| `Rescale(0, decimal.RoundUp)` | `2` | `-2` | 远离零舍入 |
-| `Rescale(0, decimal.RoundCeiling)` | `2` | `-1` | 向正无穷舍入 |
-| `Truncate()` | `1` | `-1` | 固定等价于 `Rescale(0, decimal.RoundDown)` |
-| `Floor()` | `1` | `-2` | 向负无穷取整 |
-| `Ceil()` | `2` | `-1` | 向正无穷取整 |
+| 场景                                 | 正数 `1.23` | 负数 `-1.23` | 说明                                    |
+|------------------------------------|-----------|------------|---------------------------------------|
+| `Rescale(0, decimal.RoundDown)`    | `1`       | `-1`       | 向零舍入                                  |
+| `Rescale(0, decimal.RoundUp)`      | `2`       | `-2`       | 远离零舍入                                 |
+| `Rescale(0, decimal.RoundCeiling)` | `2`       | `-1`       | 向正无穷舍入                                |
+| `Truncate()`                       | `1`       | `-1`       | 固定等价于 `Rescale(0, decimal.RoundDown)` |
+| `Floor()`                          | `1`       | `-2`       | 向负无穷取整                                |
+| `Ceil()`                           | `2`       | `-1`       | 向正无穷取整                                |
 
 实用建议：
 
@@ -201,7 +201,7 @@ fmt.Println(b.String()) // 1.5
 
 ```go
 d := decimal.MustFromString("7.5000")
-fmt.Println(d.String())               // 7.5
+fmt.Println(d.String()) // 7.5
 fmt.Println(d.StringWithTrailingZeros()) // 7.5000
 ```
 
@@ -281,7 +281,20 @@ sum := x.Add(y)
 product := x.Mul(y, decimal.RoundHalfEven)
 quotient := y.Quo(x, decimal.RoundDown)
 
-fmt.Println(sum.String())      // 3.54
-fmt.Println(product.String())   // 2.81
-fmt.Println(quotient.String())  // 1.95
+fmt.Println(sum.String()) // 3.54
+fmt.Println(product.String()) // 2.81
+fmt.Println(quotient.String()) // 1.95
+```
+
+## 发布与版本
+
+- 版本遵循 [Semantic Versioning](https://semver.org/)
+- 变更记录遵循 [Keep a Changelog](https://keepachangelog.com/)，见仓库根目录 `CHANGELOG.md`
+- 发布通过 Git tag 触发（匹配 `v*.*.*`）
+
+示例：
+
+```bash
+git tag -a v0.1.0 -m "release v0.1.0"
+git push origin v0.1.0
 ```
