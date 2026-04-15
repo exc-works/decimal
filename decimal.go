@@ -871,6 +871,16 @@ func (d Decimal) Float64() (float64, bool) {
 	return rat.Float64()
 }
 
+// Float32 returns the nearest float32 value for d and whether it is exact.
+func (d Decimal) Float32() (float32, bool) {
+	d = initializeIfNeeded(d)
+	rat := new(big.Rat).SetFrac(
+		new(big.Int).Set(d.i),
+		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
+	)
+	return rat.Float32()
+}
+
 // Int64 returns d as an int64 if it is an exact integer in range.
 func (d Decimal) Int64() (int64, bool) {
 	intPart, fractionPart := d.Remainder()

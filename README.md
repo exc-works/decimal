@@ -123,6 +123,7 @@ func main() {
 - `IsInteger()`、`HasFraction()`
 - `Neg()`、`Abs()`
 - `BigInt()`：返回底层 `*big.Int` 的副本
+- `Float32() (float32, bool)`：转换为 `float32`，并返回是否精确
 - `Float64() (float64, bool)`：转换为 `float64`，并返回是否精确
 - `Int64() (int64, bool)` / `Uint64() (uint64, bool)`：仅在“可精确表示”时返回 `ok=true`
 - `BitLen()`：返回底层整数的 bit 长度
@@ -173,6 +174,7 @@ fmt.Println(d.StringWithTrailingZeros()) // 7.5000
 ### YAML
 
 - `MarshalYAML()`：返回字符串值
+- `UnmarshalYAML()`：解析 YAML 标量（字符串/数字）
 
 ### Text
 

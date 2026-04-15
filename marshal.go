@@ -136,6 +136,73 @@ func (d Decimal) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
+// UnmarshalYAML implements yaml unmarshaling by decoding scalar values into Decimal.
+func (d *Decimal) UnmarshalYAML(unmarshal func(any) error) error {
+	var raw any
+	if err := unmarshal(&raw); err != nil {
+		return err
+	}
+
+	if raw == nil {
+		return nil
+	}
+
+	switch v := raw.(type) {
+	case string:
+		parsed, err := NewFromString(v)
+		if err != nil {
+			return err
+		}
+		*d = parsed
+		return nil
+	case []byte:
+		parsed, err := NewFromString(string(v))
+		if err != nil {
+			return err
+		}
+		*d = parsed
+		return nil
+	case int:
+		*d = NewFromInt(v)
+		return nil
+	case int8:
+		*d = New(int64(v))
+		return nil
+	case int16:
+		*d = New(int64(v))
+		return nil
+	case int32:
+		*d = New(int64(v))
+		return nil
+	case int64:
+		*d = New(v)
+		return nil
+	case uint:
+		*d = NewFromUint64(uint64(v), 0)
+		return nil
+	case uint8:
+		*d = NewFromUint64(uint64(v), 0)
+		return nil
+	case uint16:
+		*d = NewFromUint64(uint64(v), 0)
+		return nil
+	case uint32:
+		*d = NewFromUint64(uint64(v), 0)
+		return nil
+	case uint64:
+		*d = NewFromUint64(v, 0)
+		return nil
+	case float32:
+		*d = NewFromFloat32(v)
+		return nil
+	case float64:
+		*d = NewFromFloat64(v)
+		return nil
+	default:
+		return fmt.Errorf("could not convert YAML value of type '%T' to Decimal", raw)
+	}
+}
+
 // MarshalText implements encoding.TextMarshaler by returning the decimal string form.
 func (d Decimal) MarshalText() ([]byte, error) {
 	d = initializeIfNeeded(d)

@@ -348,6 +348,13 @@ func ExampleDecimal_Float64() {
 	// 0.5 true
 }
 
+func ExampleDecimal_Float32() {
+	v, exact := MustFromString("0.5").Float32()
+	fmt.Println(v, exact)
+	// Output:
+	// 0.5 true
+}
+
 func ExampleDecimal_Int64() {
 	v, ok := MustFromString("42.0").Int64()
 	fmt.Println(v, ok)
@@ -513,6 +520,18 @@ func ExampleDecimal_UnmarshalJSON() {
 func ExampleDecimal_MarshalYAML() {
 	v, _ := MustFromString("1.23").MarshalYAML()
 	fmt.Println(v)
+	// Output:
+	// 1.23
+}
+
+func ExampleDecimal_UnmarshalYAML() {
+	var d Decimal
+	_ = d.UnmarshalYAML(func(target any) error {
+		p := target.(*any)
+		*p = "1.23"
+		return nil
+	})
+	fmt.Println(d)
 	// Output:
 	// 1.23
 }

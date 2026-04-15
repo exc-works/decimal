@@ -203,6 +203,76 @@ func TestValueAndMarshalYAML(t *testing.T) {
 	})
 }
 
+func TestDecimalUnmarshalYAML(t *testing.T) {
+	decode := func(value any, err error) func(any) error {
+		return func(target any) error {
+			if err != nil {
+				return err
+			}
+			ptr, ok := target.(*any)
+			if !ok {
+				t.Fatalf("unexpected target type %T", target)
+			}
+			*ptr = value
+			return nil
+		}
+	}
+
+	t.Run("string", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalYAML(decode("1.2300", nil)); err != nil {
+			t.Fatalf("UnmarshalYAML(string) returned error: %v", err)
+		}
+		if d.StringWithTrailingZeros() != "1.2300" {
+			t.Fatalf("UnmarshalYAML(string) = %s, want 1.2300", d.StringWithTrailingZeros())
+		}
+	})
+
+	t.Run("float64", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalYAML(decode(float64(1.25), nil)); err != nil {
+			t.Fatalf("UnmarshalYAML(float64) returned error: %v", err)
+		}
+		if d.String() != "1.25" {
+			t.Fatalf("UnmarshalYAML(float64) = %s, want 1.25", d.String())
+		}
+	})
+
+	t.Run("int64", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalYAML(decode(int64(42), nil)); err != nil {
+			t.Fatalf("UnmarshalYAML(int64) returned error: %v", err)
+		}
+		if d.String() != "42" {
+			t.Fatalf("UnmarshalYAML(int64) = %s, want 42", d.String())
+		}
+	})
+
+	t.Run("null no-op", func(t *testing.T) {
+		d := MustFromString("9.99")
+		if err := d.UnmarshalYAML(decode(nil, nil)); err != nil {
+			t.Fatalf("UnmarshalYAML(nil) returned error: %v", err)
+		}
+		if d.String() != "9.99" {
+			t.Fatalf("UnmarshalYAML(nil) = %s, want 9.99", d.String())
+		}
+	})
+
+	t.Run("invalid string", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalYAML(decode("bad", nil)); err == nil {
+			t.Fatal("UnmarshalYAML(invalid string) expected error, got nil")
+		}
+	})
+
+	t.Run("unsupported type", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalYAML(decode(true, nil)); err == nil {
+			t.Fatal("UnmarshalYAML(unsupported type) expected error, got nil")
+		}
+	})
+}
+
 func TestMarshalTextAndUnmarshalText(t *testing.T) {
 	t.Run("marshal text", func(t *testing.T) {
 		bz, err := MustFromString("1.2300").MarshalText()

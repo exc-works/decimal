@@ -1045,6 +1045,42 @@ func TestDecimalFloat64(t *testing.T) {
 	}
 }
 
+func TestDecimalFloat32(t *testing.T) {
+	overflow := NewFromBigInt(new(big.Int).Exp(big.NewInt(10), big.NewInt(400), nil))
+
+	tests := []struct {
+		name      string
+		input     Decimal
+		want      float32
+		wantExact bool
+		checkInf  bool
+		infSign   int
+	}{
+		{name: "exact integer", input: New(42), want: 42, wantExact: true},
+		{name: "exact fraction", input: mustDecimal(t, "0.5"), want: 0.5, wantExact: true},
+		{name: "inexact fraction", input: mustDecimal(t, "0.1"), want: 0.1, wantExact: false},
+		{name: "zero value", input: Decimal{}, want: 0, wantExact: true},
+		{name: "positive overflow", input: overflow, want: float32(math.Inf(1)), wantExact: false, checkInf: true, infSign: 1},
+		{name: "negative overflow", input: overflow.Neg(), want: float32(math.Inf(-1)), wantExact: false, checkInf: true, infSign: -1},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, exact := tc.input.Float32()
+			if tc.checkInf {
+				if !math.IsInf(float64(got), tc.infSign) {
+					t.Fatalf("Float32() = %v, want %v", got, tc.want)
+				}
+			} else if got != tc.want {
+				t.Fatalf("Float32() = %v, want %v", got, tc.want)
+			}
+			if exact != tc.wantExact {
+				t.Fatalf("Float32() exact = %v, want %v", exact, tc.wantExact)
+			}
+		})
+	}
+}
+
 func TestDecimalInt64(t *testing.T) {
 	tests := []struct {
 		name   string
