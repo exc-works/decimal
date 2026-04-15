@@ -29,6 +29,12 @@ func ExampleNewFromFloat64() {
 	// 12.34
 }
 
+func ExampleNewFromFloat32() {
+	fmt.Println(NewFromFloat32(12.34))
+	// Output:
+	// 12.34
+}
+
 func ExampleNewWithAppendPrec() {
 	fmt.Println(NewWithAppendPrec(12, 3).StringWithTrailingZeros())
 	// Output:
@@ -507,6 +513,21 @@ func ExampleDecimal_UnmarshalJSON() {
 func ExampleDecimal_MarshalYAML() {
 	v, _ := MustFromString("1.23").MarshalYAML()
 	fmt.Println(v)
+	// Output:
+	// 1.23
+}
+
+func ExampleDecimal_MarshalText() {
+	bz, _ := MustFromString("1.23").MarshalText()
+	fmt.Println(string(bz))
+	// Output:
+	// 1.23
+}
+
+func ExampleDecimal_UnmarshalText() {
+	var d Decimal
+	_ = d.UnmarshalText([]byte("1.23"))
+	fmt.Println(d)
 	// Output:
 	// 1.23
 }

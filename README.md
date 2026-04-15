@@ -48,6 +48,7 @@ func main() {
 - `decimal.NewFromInt(int)`：按整数构造，精度为 `0`
 - `decimal.NewWithPrec(int64, prec)`：按整数值构造，并指定精度
 - `decimal.NewFromFloat64(float64)`：通过十进制字符串转换构造
+- `decimal.NewFromFloat32(float32)`：通过十进制字符串转换构造
 - `decimal.NewWithAppendPrec(int64, prec)`：按整数值构造，并补足 `prec` 位小数零
 - `decimal.NewFromUintWithAppendPrec(uint64, prec)`：与上面类似，但输入为无符号整数
 - `decimal.NewFromBigInt(*big.Int)`：从 `big.Int` 构造，精度为 `0`
@@ -172,6 +173,11 @@ fmt.Println(d.StringWithTrailingZeros()) // 7.5000
 ### YAML
 
 - `MarshalYAML()`：返回字符串值
+
+### Text
+
+- `MarshalText()`：输出十进制文本
+- `UnmarshalText()`：解析十进制文本
 
 ### Binary / protobuf
 

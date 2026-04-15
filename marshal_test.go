@@ -203,6 +203,46 @@ func TestValueAndMarshalYAML(t *testing.T) {
 	})
 }
 
+func TestMarshalTextAndUnmarshalText(t *testing.T) {
+	t.Run("marshal text", func(t *testing.T) {
+		bz, err := MustFromString("1.2300").MarshalText()
+		if err != nil {
+			t.Fatalf("MarshalText() returned error: %v", err)
+		}
+		if string(bz) != "1.23" {
+			t.Fatalf("MarshalText() = %s, want 1.23", string(bz))
+		}
+	})
+
+	t.Run("marshal text zero value", func(t *testing.T) {
+		var d Decimal
+		bz, err := d.MarshalText()
+		if err != nil {
+			t.Fatalf("MarshalText() returned error: %v", err)
+		}
+		if string(bz) != "0" {
+			t.Fatalf("MarshalText() = %s, want 0", string(bz))
+		}
+	})
+
+	t.Run("unmarshal text", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalText([]byte("1.2300")); err != nil {
+			t.Fatalf("UnmarshalText() returned error: %v", err)
+		}
+		if d.StringWithTrailingZeros() != "1.2300" {
+			t.Fatalf("UnmarshalText() = %s, want 1.2300", d.StringWithTrailingZeros())
+		}
+	})
+
+	t.Run("unmarshal text invalid", func(t *testing.T) {
+		var d Decimal
+		if err := d.UnmarshalText([]byte("")); err == nil {
+			t.Fatal("UnmarshalText() expected error, got nil")
+		}
+	})
+}
+
 func TestScan(t *testing.T) {
 	t.Run("nil", func(t *testing.T) {
 		d := MustFromString("1")
@@ -221,6 +261,16 @@ func TestScan(t *testing.T) {
 		}
 		if d.String() != "1.25" {
 			t.Fatalf("Scan(float64) = %s, want 1.25", d.String())
+		}
+	})
+
+	t.Run("float32", func(t *testing.T) {
+		var d Decimal
+		if err := d.Scan(float32(1.25)); err != nil {
+			t.Fatalf("Scan(float32) returned error: %v", err)
+		}
+		if d.String() != "1.25" {
+			t.Fatalf("Scan(float32) = %s, want 1.25", d.String())
 		}
 	})
 

@@ -82,6 +82,11 @@ func NewFromFloat64(value float64) Decimal {
 	return MustFromString(strconv.FormatFloat(value, 'f', -1, 64))
 }
 
+// NewFromFloat32 returns a Decimal parsed from value.
+func NewFromFloat32(value float32) Decimal {
+	return MustFromString(strconv.FormatFloat(float64(value), 'f', -1, 32))
+}
+
 // NewWithAppendPrec returns a Decimal created from value with prec trailing zeros appended.
 // It panics if prec is negative.
 func NewWithAppendPrec(value int64, prec int) Decimal {

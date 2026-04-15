@@ -136,6 +136,22 @@ func (d Decimal) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
+// MarshalText implements encoding.TextMarshaler by returning the decimal string form.
+func (d Decimal) MarshalText() ([]byte, error) {
+	d = initializeIfNeeded(d)
+	return []byte(d.String()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler by parsing decimal text.
+func (d *Decimal) UnmarshalText(text []byte) error {
+	parsed, err := NewFromString(string(text))
+	if err != nil {
+		return err
+	}
+	*d = parsed
+	return nil
+}
+
 // MarshalBinary implements encoding.BinaryMarshaler.
 // The binary layout is 4 bytes of big-endian precision followed by big.Int Gob bytes.
 // It strips trailing zeros before encoding and returns nil for an uninitialized value.
@@ -197,7 +213,7 @@ func (d *Decimal) Scan(value any) error {
 	switch v := value.(type) {
 
 	case float32:
-		*d = NewFromFloat64(float64(v))
+		*d = NewFromFloat32(v)
 		return nil
 
 	case float64:

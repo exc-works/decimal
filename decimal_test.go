@@ -113,6 +113,27 @@ func TestNewFromFloat64(t *testing.T) {
 	}
 }
 
+func TestNewFromFloat32(t *testing.T) {
+	tests := []struct {
+		name  string
+		value float32
+		want  string
+	}{
+		{name: "zero", value: 0, want: "0"},
+		{name: "one", value: 1, want: "1"},
+		{name: "half", value: 0.5, want: "0.5"},
+		{name: "fraction", value: 12.34, want: "12.34"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := NewFromFloat32(tc.value)
+			want := mustDecimal(t, tc.want)
+			assertDecimalEqual(t, got, want)
+		})
+	}
+}
+
 func TestNewWithPrec(t *testing.T) {
 	got := NewWithPrec(0, 18)
 	if got.Precision() != 18 {
