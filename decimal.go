@@ -972,6 +972,15 @@ func (d Decimal) BigInt() *big.Int {
 	return cp.Set(d.i)
 }
 
+// BigRat returns d as an exact rational value.
+func (d Decimal) BigRat() *big.Rat {
+	d = initializeIfNeeded(d)
+	return new(big.Rat).SetFrac(
+		new(big.Int).Set(d.i),
+		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
+	)
+}
+
 // Float64 returns the nearest float64 value for d and whether it is exact.
 func (d Decimal) Float64() (float64, bool) {
 	d = initializeIfNeeded(d)

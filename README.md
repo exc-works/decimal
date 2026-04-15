@@ -142,6 +142,7 @@ fmt.Println(b.String()) // 1.5
 - `IsInteger()`、`HasFraction()`
 - `Neg()`、`Abs()`
 - `BigInt()`：返回底层 `*big.Int` 的副本
+- `BigRat()`：返回当前值对应的 `*big.Rat` 副本
 - `Float32() (float32, bool)`：转换为 `float32`，并返回是否精确
 - `Float64() (float64, bool)`：转换为 `float64`，并返回是否精确
 - `Int64() (int64, bool)` / `Uint64() (uint64, bool)`：仅在“可精确表示”时返回 `ok=true`
@@ -168,6 +169,25 @@ fmt.Println(b.String()) // 1.5
 - `RoundCeiling` 表示向正无穷舍入
 - `RoundHalfEven` 也叫 bankers rounding
 - `RoundUnnecessary` 要求结果必须精确，否则会 panic
+
+### 舍入语义对照
+
+`RoundingMode` 主要用于 `Rescale`、`Mul`、`Quo` 等“按模式舍入”的运算；`Floor`、`Ceil`、`Truncate` 是固定语义的方法。最容易混淆的是负数场景：
+
+| 场景 | 正数 `1.23` | 负数 `-1.23` | 说明 |
+| --- | --- | --- | --- |
+| `Rescale(0, decimal.RoundDown)` | `1` | `-1` | 向零舍入 |
+| `Rescale(0, decimal.RoundUp)` | `2` | `-2` | 远离零舍入 |
+| `Rescale(0, decimal.RoundCeiling)` | `2` | `-1` | 向正无穷舍入 |
+| `Truncate()` | `1` | `-1` | 固定等价于 `Rescale(0, decimal.RoundDown)` |
+| `Floor()` | `1` | `-2` | 向负无穷取整 |
+| `Ceil()` | `2` | `-1` | 向正无穷取整 |
+
+实用建议：
+
+- 想“直接砍掉小数部分”时用 `Truncate()` 或 `Rescale(..., decimal.RoundDown)`
+- 想得到数学意义上的下取整 / 上取整时用 `Floor()` / `Ceil()`
+- `RoundUp` 不是 `Floor`，`RoundCeiling` 也不等于 `Ceil`；它们只在部分符号场景下结果相同
 
 ## 序列化
 

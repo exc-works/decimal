@@ -480,6 +480,12 @@ func ExampleDecimal_BigInt() {
 	// 1234
 }
 
+func ExampleDecimal_BigRat() {
+	fmt.Println(MustFromString("12.34").BigRat().RatString())
+	// Output:
+	// 617/50
+}
+
 func ExampleDecimal_BitLen() {
 	fmt.Println(New(7).BitLen())
 	// Output:

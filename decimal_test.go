@@ -1245,6 +1245,44 @@ func TestDecimalFloat32(t *testing.T) {
 	}
 }
 
+func TestDecimalBigRat(t *testing.T) {
+	tests := []struct {
+		name  string
+		input Decimal
+		want  *big.Rat
+	}{
+		{name: "positive integer", input: New(42), want: big.NewRat(42, 1)},
+		{name: "negative fraction", input: mustDecimal(t, "-12.34"), want: big.NewRat(-617, 50)},
+		{name: "fraction with trailing zeros", input: mustDecimal(t, "1.2300"), want: big.NewRat(123, 100)},
+		{name: "zero", input: Zero, want: big.NewRat(0, 1)},
+		{name: "zero value", input: Decimal{}, want: big.NewRat(0, 1)},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.input.BigRat()
+			if got.Cmp(tc.want) != 0 {
+				t.Fatalf("BigRat() = %s, want %s", got.RatString(), tc.want.RatString())
+			}
+		})
+	}
+
+	t.Run("returned rat does not mutate decimal", func(t *testing.T) {
+		input := mustDecimal(t, "12.34")
+
+		got := input.BigRat()
+		got.Add(got, big.NewRat(1, 3))
+
+		assertDecimalEqual(t, input, mustDecimal(t, "12.34"))
+
+		again := input.BigRat()
+		want := big.NewRat(617, 50)
+		if again.Cmp(want) != 0 {
+			t.Fatalf("BigRat() after mutation = %s, want %s", again.RatString(), want.RatString())
+		}
+	})
+}
+
 func TestDecimalInt64(t *testing.T) {
 	tests := []struct {
 		name   string
