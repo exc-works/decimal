@@ -214,7 +214,10 @@ if err := c.ShouldBindQuery(&req); err != nil {
   `decimal_eq`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`
 - Uses exact `Decimal` comparison (`Cmp`), without `Float64` conversion
 - Supports friendly error messages via translation helpers:
-  `RegisterGoPlaygroundValidatorTranslations` and `TranslateGoPlaygroundValidationErrors`
+  `RegisterGoPlaygroundValidatorTranslations`,
+  `RegisterGoPlaygroundValidatorTranslationsWithMessages`,
+  and `TranslateGoPlaygroundValidationErrors`
+- Built-in translation locales: `en`, `zh`, `ja`, `fr`, `es`, `de`, `pt`
 - Register once before any validation
 
 Example:
@@ -248,6 +251,14 @@ trans, _ := uni.GetTranslator("en")
 
 _ = decimal.RegisterGoPlaygroundValidatorTranslations(v, trans)
 messages := decimal.TranslateGoPlaygroundValidationErrors(err, trans)
+```
+
+Custom language template override example:
+
+```go
+_ = decimal.RegisterGoPlaygroundValidatorTranslationsWithMessages(v, trans, map[string]string{
+	"decimal_required": "{0} cannot be empty",
+})
 ```
 
 For gin:

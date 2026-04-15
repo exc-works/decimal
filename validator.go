@@ -3,6 +3,7 @@ package decimal
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
@@ -49,7 +50,22 @@ func RegisterGoPlaygroundValidator(v *validator.Validate) error {
 
 // RegisterGoPlaygroundValidatorTranslations registers friendly error messages
 // for Decimal validator tags on the provided translator.
+//
+// It selects built-in messages by trans.Locale(), with English fallback.
+// Built-in locales include: en, zh, ja, fr, es, de, pt.
 func RegisterGoPlaygroundValidatorTranslations(v *validator.Validate, trans ut.Translator) error {
+	return RegisterGoPlaygroundValidatorTranslationsWithMessages(
+		v,
+		trans,
+		DefaultGoPlaygroundValidatorTranslationMessages(trans.Locale()),
+	)
+}
+
+// RegisterGoPlaygroundValidatorTranslationsWithMessages registers friendly
+// Decimal validator messages using caller-provided templates.
+//
+// Any missing tag message falls back to English defaults.
+func RegisterGoPlaygroundValidatorTranslationsWithMessages(v *validator.Validate, trans ut.Translator, messages map[string]string) error {
 	if v == nil {
 		return fmt.Errorf("validator is nil")
 	}
@@ -57,24 +73,28 @@ func RegisterGoPlaygroundValidatorTranslations(v *validator.Validate, trans ut.T
 		return fmt.Errorf("translator is nil")
 	}
 
-	translations := []struct {
-		tag     string
-		message string
-	}{
-		{tag: "decimal_required", message: "{0} is required"},
-		{tag: "decimal_eq", message: "{0} must be equal to {1}"},
-		{tag: "decimal_gt", message: "{0} must be greater than {1}"},
-		{tag: "decimal_gte", message: "{0} must be greater than or equal to {1}"},
-		{tag: "decimal_lt", message: "{0} must be less than {1}"},
-		{tag: "decimal_lte", message: "{0} must be less than or equal to {1}"},
+	merged := defaultGoPlaygroundValidatorTranslationMessages("en")
+	for tag, msg := range messages {
+		merged[tag] = msg
 	}
 
-	for _, item := range translations {
-		tag := item.tag
-		message := item.message
+	for _, tag := range []string{
+		"decimal_required",
+		"decimal_eq",
+		"decimal_gt",
+		"decimal_gte",
+		"decimal_lt",
+		"decimal_lte",
+	} {
+		message, ok := merged[tag]
+		if !ok || message == "" {
+			return fmt.Errorf("missing translation for tag %q", tag)
+		}
+		currentTag := tag
+		currentMessage := message
 		if err := v.RegisterTranslation(tag, trans,
 			func(ut ut.Translator) error {
-				return ut.Add(tag, message, true)
+				return ut.Add(currentTag, currentMessage, true)
 			},
 			func(ut ut.Translator, fe validator.FieldError) string {
 				translated, err := ut.T(fe.Tag(), fe.Field(), fe.Param())
@@ -89,6 +109,85 @@ func RegisterGoPlaygroundValidatorTranslations(v *validator.Validate, trans ut.T
 	}
 
 	return nil
+}
+
+// DefaultGoPlaygroundValidatorTranslationMessages returns built-in translation
+// templates for Decimal validation tags by locale (with English fallback).
+func DefaultGoPlaygroundValidatorTranslationMessages(locale string) map[string]string {
+	return defaultGoPlaygroundValidatorTranslationMessages(locale)
+}
+
+func defaultGoPlaygroundValidatorTranslationMessages(locale string) map[string]string {
+	normalized := normalizeLocale(locale)
+	switch {
+	case normalized == "zh" || normalized == "zh_cn" || strings.HasPrefix(normalized, "zh_"):
+		return map[string]string{
+			"decimal_required": "{0}为必填项",
+			"decimal_eq":       "{0}必须等于{1}",
+			"decimal_gt":       "{0}必须大于{1}",
+			"decimal_gte":      "{0}必须大于或等于{1}",
+			"decimal_lt":       "{0}必须小于{1}",
+			"decimal_lte":      "{0}必须小于或等于{1}",
+		}
+	case normalized == "ja" || strings.HasPrefix(normalized, "ja_"):
+		return map[string]string{
+			"decimal_required": "{0}は必須です",
+			"decimal_eq":       "{0}は{1}と等しくなければなりません",
+			"decimal_gt":       "{0}は{1}より大きくなければなりません",
+			"decimal_gte":      "{0}は{1}以上でなければなりません",
+			"decimal_lt":       "{0}は{1}より小さくなければなりません",
+			"decimal_lte":      "{0}は{1}以下でなければなりません",
+		}
+	case normalized == "fr" || strings.HasPrefix(normalized, "fr_"):
+		return map[string]string{
+			"decimal_required": "{0} est obligatoire",
+			"decimal_eq":       "{0} doit être égal à {1}",
+			"decimal_gt":       "{0} doit être supérieur à {1}",
+			"decimal_gte":      "{0} doit être supérieur ou égal à {1}",
+			"decimal_lt":       "{0} doit être inférieur à {1}",
+			"decimal_lte":      "{0} doit être inférieur ou égal à {1}",
+		}
+	case normalized == "es" || strings.HasPrefix(normalized, "es_"):
+		return map[string]string{
+			"decimal_required": "{0} es obligatorio",
+			"decimal_eq":       "{0} debe ser igual a {1}",
+			"decimal_gt":       "{0} debe ser mayor que {1}",
+			"decimal_gte":      "{0} debe ser mayor o igual que {1}",
+			"decimal_lt":       "{0} debe ser menor que {1}",
+			"decimal_lte":      "{0} debe ser menor o igual que {1}",
+		}
+	case normalized == "de" || strings.HasPrefix(normalized, "de_"):
+		return map[string]string{
+			"decimal_required": "{0} ist erforderlich",
+			"decimal_eq":       "{0} muss gleich {1} sein",
+			"decimal_gt":       "{0} muss größer als {1} sein",
+			"decimal_gte":      "{0} muss größer oder gleich {1} sein",
+			"decimal_lt":       "{0} muss kleiner als {1} sein",
+			"decimal_lte":      "{0} muss kleiner oder gleich {1} sein",
+		}
+	case normalized == "pt" || strings.HasPrefix(normalized, "pt_"):
+		return map[string]string{
+			"decimal_required": "{0} é obrigatório",
+			"decimal_eq":       "{0} deve ser igual a {1}",
+			"decimal_gt":       "{0} deve ser maior que {1}",
+			"decimal_gte":      "{0} deve ser maior ou igual a {1}",
+			"decimal_lt":       "{0} deve ser menor que {1}",
+			"decimal_lte":      "{0} deve ser menor ou igual a {1}",
+		}
+	default:
+		return map[string]string{
+			"decimal_required": "{0} is required",
+			"decimal_eq":       "{0} must be equal to {1}",
+			"decimal_gt":       "{0} must be greater than {1}",
+			"decimal_gte":      "{0} must be greater than or equal to {1}",
+			"decimal_lt":       "{0} must be less than {1}",
+			"decimal_lte":      "{0} must be less than or equal to {1}",
+		}
+	}
+}
+
+func normalizeLocale(locale string) string {
+	return strings.ToLower(strings.ReplaceAll(locale, "-", "_"))
 }
 
 // TranslateGoPlaygroundValidationErrors converts validator errors into friendly messages.
