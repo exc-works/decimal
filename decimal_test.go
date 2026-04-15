@@ -3,6 +3,7 @@ package decimal
 import (
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -131,6 +132,169 @@ func TestNewFromFloat32(t *testing.T) {
 			want := mustDecimal(t, tc.want)
 			assertDecimalEqual(t, got, want)
 		})
+	}
+}
+
+func TestNewFromBigRat(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     *big.Rat
+		want      string
+		wantPrec  int
+		wantError bool
+	}{
+		{name: "half", value: big.NewRat(1, 2), want: "0.5", wantPrec: 1},
+		{name: "negative fraction", value: big.NewRat(-7, 4), want: "-1.75", wantPrec: 2},
+		{name: "integer", value: big.NewRat(5, 1), want: "5", wantPrec: 0},
+		{name: "zero", value: big.NewRat(0, 7), want: "0", wantPrec: 0},
+		{name: "non terminating", value: big.NewRat(1, 3), wantError: true},
+		{name: "nil", value: nil, wantError: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NewFromBigRat(tc.value)
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("NewFromBigRat(%v) expected error, got %s", tc.value, got.String())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewFromBigRat(%v) returned error: %v", tc.value, err)
+			}
+
+			want := mustDecimal(t, tc.want)
+			assertDecimalEqual(t, got, want)
+			if got.Precision() != tc.wantPrec {
+				t.Fatalf("NewFromBigRat(%v) precision = %d, want %d", tc.value, got.Precision(), tc.wantPrec)
+			}
+		})
+	}
+}
+
+func TestNewFromBigRatWithPrec(t *testing.T) {
+	tests := []struct {
+		name      string
+		value     *big.Rat
+		prec      int
+		mode      RoundingMode
+		want      string
+		wantPrec  int
+		wantError bool
+	}{
+		{name: "non terminating round down", value: big.NewRat(1, 3), prec: 2, mode: RoundDown, want: "0.33", wantPrec: 2},
+		{name: "non terminating round up", value: big.NewRat(1, 3), prec: 2, mode: RoundUp, want: "0.34", wantPrec: 2},
+		{name: "negative non terminating round down", value: big.NewRat(-1, 3), prec: 2, mode: RoundDown, want: "-0.33", wantPrec: 2},
+		{name: "negative non terminating round up", value: big.NewRat(-1, 3), prec: 2, mode: RoundUp, want: "-0.34", wantPrec: 2},
+		{name: "half even tie", value: big.NewRat(1, 8), prec: 2, mode: RoundHalfEven, want: "0.12", wantPrec: 2},
+		{name: "round up with tail beyond guard digit", value: big.NewRat(3300001, 10000000), prec: 2, mode: RoundUp, want: "0.34", wantPrec: 2},
+		{name: "half even with tail beyond guard digit", value: big.NewRat(3250001, 10000000), prec: 2, mode: RoundHalfEven, want: "0.33", wantPrec: 2},
+		{name: "keep zero scale", value: big.NewRat(0, 7), prec: 4, mode: RoundHalfEven, want: "0", wantPrec: 4},
+		{name: "nil", value: nil, prec: 2, mode: RoundHalfEven, wantError: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NewFromBigRatWithPrec(tc.value, tc.prec, tc.mode)
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("NewFromBigRatWithPrec(%v, %d, %v) expected error, got %s", tc.value, tc.prec, tc.mode, got.String())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewFromBigRatWithPrec(%v, %d, %v) returned error: %v", tc.value, tc.prec, tc.mode, err)
+			}
+
+			want := mustDecimal(t, tc.want)
+			assertDecimalEqual(t, got, want)
+			if got.Precision() != tc.wantPrec {
+				t.Fatalf("NewFromBigRatWithPrec(%v, %d, %v) precision = %d, want %d",
+					tc.value, tc.prec, tc.mode, got.Precision(), tc.wantPrec)
+			}
+		})
+	}
+
+	t.Run("negative precision panics", func(t *testing.T) {
+		assertPanic(t, func() {
+			_, _ = NewFromBigRatWithPrec(big.NewRat(1, 3), -1, RoundHalfEven)
+		})
+	})
+}
+
+func TestNewFromBigRatWithPrecMatchesRescale(t *testing.T) {
+	inputs := []string{
+		"0",
+		"1.25",
+		"-1.25",
+		"2.345",
+		"-2.345",
+		"9.995",
+		"-9.995",
+		"123456789.5000",
+	}
+
+	targetPrecs := []int{0, 1, 2, 3, 4}
+	modes := []RoundingMode{
+		RoundDown,
+		RoundUp,
+		RoundCeiling,
+		RoundHalfUp,
+		RoundHalfDown,
+		RoundHalfEven,
+		RoundUnnecessary,
+	}
+
+	callRescale := func(v Decimal, prec int, mode RoundingMode) (got Decimal, panicked bool) {
+		defer func() {
+			if recover() != nil {
+				panicked = true
+			}
+		}()
+		got = v.Rescale(prec, mode)
+		return
+	}
+
+	callFromRat := func(v *big.Rat, prec int, mode RoundingMode) (got Decimal, panicked bool) {
+		defer func() {
+			if recover() != nil {
+				panicked = true
+			}
+		}()
+		var err error
+		got, err = NewFromBigRatWithPrec(v, prec, mode)
+		if err != nil {
+			t.Fatalf("NewFromBigRatWithPrec(%s, %d, %v) returned error: %v", v.RatString(), prec, mode, err)
+		}
+		return
+	}
+
+	for _, input := range inputs {
+		exact := mustDecimal(t, input)
+		rat := new(big.Rat).SetFrac(new(big.Int).Set(exact.i), safeGetPrecisionMultiplier(exact.prec))
+
+		for _, prec := range targetPrecs {
+			for _, mode := range modes {
+				name := input + "/prec=" + strconv.Itoa(prec) + "/mode=" + strconv.Itoa(int(mode))
+				t.Run(name, func(t *testing.T) {
+					want, wantPanic := callRescale(exact, prec, mode)
+					got, gotPanic := callFromRat(rat, prec, mode)
+
+					if gotPanic != wantPanic {
+						t.Fatalf("panic mismatch: got=%v want=%v", gotPanic, wantPanic)
+					}
+					if wantPanic {
+						return
+					}
+
+					assertDecimalEqual(t, got, want)
+					if got.Precision() != want.Precision() {
+						t.Fatalf("precision mismatch: got=%d want=%d", got.Precision(), want.Precision())
+					}
+				})
+			}
+		}
 	}
 }
 

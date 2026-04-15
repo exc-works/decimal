@@ -52,6 +52,8 @@ func main() {
 - `decimal.NewWithAppendPrec(int64, prec)`：按整数值构造，并补足 `prec` 位小数零
 - `decimal.NewFromUintWithAppendPrec(uint64, prec)`：与上面类似，但输入为无符号整数
 - `decimal.NewFromBigInt(*big.Int)`：从 `big.Int` 构造，精度为 `0`
+- `decimal.NewFromBigRat(*big.Rat)`：从 `big.Rat` 构造，无法精确表示为有限小数时返回错误
+- `decimal.NewFromBigRatWithPrec(*big.Rat, prec, decimal.RoundingMode)`：从 `big.Rat` 构造，并按指定精度和舍入方式转换
 - `decimal.NewFromBigIntWithPrec(*big.Int, prec)`：从 `big.Int` 构造，并指定精度
 - `decimal.NewFromInt64(int64, precision)`：从 `int64` 构造，并指定精度
 - `decimal.NewFromUint64(uint64, precision)`：从 `uint64` 构造，并指定精度

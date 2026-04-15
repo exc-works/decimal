@@ -53,6 +53,20 @@ func ExampleNewFromBigInt() {
 	// 123
 }
 
+func ExampleNewFromBigRat() {
+	d, err := NewFromBigRat(big.NewRat(7, 4))
+	fmt.Println(d, err == nil)
+	// Output:
+	// 1.75 true
+}
+
+func ExampleNewFromBigRatWithPrec() {
+	d, err := NewFromBigRatWithPrec(big.NewRat(1, 3), 2, RoundHalfEven)
+	fmt.Println(d, err == nil)
+	// Output:
+	// 0.33 true
+}
+
 func ExampleNewFromBigIntWithPrec() {
 	fmt.Println(NewFromBigIntWithPrec(big.NewInt(12345), 2))
 	// Output:

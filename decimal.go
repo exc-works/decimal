@@ -87,6 +87,117 @@ func NewFromFloat32(value float32) Decimal {
 	return MustFromString(strconv.FormatFloat(float64(value), 'f', -1, 32))
 }
 
+// NewFromBigRat returns a Decimal converted from value.
+//
+// It returns an error when value is nil or cannot be represented as a
+// terminating decimal (for example 1/3).
+func NewFromBigRat(value *big.Rat) (Decimal, error) {
+	if value == nil {
+		return Decimal{}, errors.New("big.Rat cannot be nil")
+	}
+
+	num := new(big.Int).Set(value.Num())
+	den := new(big.Int).Set(value.Denom())
+
+	if num.Sign() == 0 {
+		return Zero, nil
+	}
+
+	twos, rem := countFactor(den, 2)
+	fives, rem := countFactor(rem, 5)
+	if rem.Cmp(oneInt) != 0 {
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: non-terminating decimal", value.RatString())
+	}
+
+	prec := twos
+	if fives > prec {
+		prec = fives
+	}
+
+	unscaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
+	unscaled.Quo(unscaled, den)
+
+	return Decimal{
+		i:    unscaled,
+		prec: prec,
+	}, nil
+}
+
+// NewFromBigRatWithPrec returns a Decimal converted from value at precision prec.
+//
+// The result is rounded according to roundingMode.
+// It returns an error when value is nil and panics when prec is negative.
+func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) (Decimal, error) {
+	requireNonNegativePrecision(prec)
+	if value == nil {
+		return Decimal{}, errors.New("big.Rat cannot be nil")
+	}
+
+	num := new(big.Int).Set(value.Num())
+	den := new(big.Int).Set(value.Denom())
+
+	if num.Sign() == 0 {
+		return NewWithPrec(0, prec), nil
+	}
+
+	scaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
+	quotient, remainder := new(big.Int).QuoRem(scaled, den, new(big.Int))
+	if remainder.Sign() != 0 {
+		// Decide whether to adjust quotient based on the exact remainder,
+		// so digits beyond prec+1 are also accounted for.
+		awayFromZero := func() {
+			if remainder.Sign() > 0 {
+				quotient.Add(quotient, oneInt)
+			} else {
+				quotient.Sub(quotient, oneInt)
+			}
+		}
+
+		switch roundingMode {
+		case RoundDown:
+			// already truncated toward zero
+		case RoundUp:
+			awayFromZero()
+		case RoundCeiling:
+			if remainder.Sign() > 0 {
+				quotient.Add(quotient, oneInt)
+			}
+		case RoundHalfUp, RoundHalfDown, RoundHalfEven:
+			twiceAbsRem := new(big.Int).Abs(remainder)
+			twiceAbsRem.Mul(twiceAbsRem, twoInt)
+			cmp := twiceAbsRem.Cmp(den)
+
+			switch roundingMode {
+			case RoundHalfUp:
+				if cmp >= 0 {
+					awayFromZero()
+				}
+			case RoundHalfDown:
+				if cmp > 0 {
+					awayFromZero()
+				}
+			case RoundHalfEven:
+				if cmp > 0 {
+					awayFromZero()
+				} else if cmp == 0 {
+					if new(big.Int).Abs(quotient).Bit(0) != 0 {
+						awayFromZero()
+					}
+				}
+			}
+		case RoundUnnecessary:
+			panic("inexact conversion")
+		default:
+			panic("invalid rounding mode")
+		}
+	}
+
+	return Decimal{
+		i:    quotient,
+		prec: prec,
+	}, nil
+}
+
 // NewWithAppendPrec returns a Decimal created from value with prec trailing zeros appended.
 // It panics if prec is negative.
 func NewWithAppendPrec(value int64, prec int) Decimal {
@@ -946,5 +1057,20 @@ func initializeIfNeeded(value Decimal) Decimal {
 func requireNonNegativePrecision(precision int) {
 	if precision < 0 {
 		panic("negative precision")
+	}
+}
+
+func countFactor(value *big.Int, factor int64) (count int, remainder *big.Int) {
+	remainder = new(big.Int).Set(value)
+	divisor := big.NewInt(factor)
+	mod := new(big.Int)
+
+	for {
+		mod.Mod(remainder, divisor)
+		if mod.Sign() != 0 {
+			return
+		}
+		remainder.Quo(remainder, divisor)
+		count++
 	}
 }
