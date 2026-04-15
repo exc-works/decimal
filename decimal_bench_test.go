@@ -7,6 +7,126 @@ import (
 	"testing"
 )
 
+var (
+	benchDecimalResult Decimal
+	benchStringResult  string
+)
+
+func BenchmarkDecimal_Add(b *testing.B) {
+	tests := []struct {
+		left  Decimal
+		right Decimal
+		name  string
+	}{
+		{name: "int/int", left: MustFromString("123456789"), right: MustFromString("37")},
+		{name: "same-prec", left: MustFromString("12345.6789"), right: MustFromString("0.3701")},
+		{name: "mixed-prec", left: MustFromString("1.23456789"), right: MustFromString("123")},
+		{name: "high-prec", left: MustFromString("123456789.123456789123456789"), right: MustFromString("0.00000000123456789")},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				benchDecimalResult = tt.left.Add(tt.right)
+			}
+		})
+	}
+}
+
+func BenchmarkDecimal_Sub(b *testing.B) {
+	tests := []struct {
+		left  Decimal
+		right Decimal
+		name  string
+	}{
+		{name: "int/int", left: MustFromString("123456789"), right: MustFromString("37")},
+		{name: "same-prec", left: MustFromString("12345.6789"), right: MustFromString("0.3701")},
+		{name: "mixed-prec", left: MustFromString("1.23456789"), right: MustFromString("123")},
+		{name: "high-prec", left: MustFromString("123456789.123456789123456789"), right: MustFromString("0.00000000123456789")},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				benchDecimalResult = tt.left.Sub(tt.right)
+			}
+		})
+	}
+}
+
+func BenchmarkDecimal_Mul(b *testing.B) {
+	tests := []struct {
+		left  Decimal
+		right Decimal
+		name  string
+	}{
+		{name: "int/int", left: MustFromString("123456789"), right: MustFromString("37")},
+		{name: "same-prec", left: MustFromString("12345.6789"), right: MustFromString("0.3701")},
+		{name: "mixed-prec", left: MustFromString("1.23456789"), right: MustFromString("123")},
+		{name: "high-prec", left: MustFromString("123456789.123456789123456789"), right: MustFromString("0.00000000123456789")},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				benchDecimalResult = tt.left.Mul(tt.right, RoundHalfEven)
+			}
+		})
+	}
+}
+
+func BenchmarkDecimal_String(b *testing.B) {
+	tests := []struct {
+		input Decimal
+		name  string
+	}{
+		{name: "int", input: MustFromString("123456789")},
+		{name: "same-prec", input: MustFromString("12345.6789")},
+		{name: "leading-zero-fraction", input: MustFromString("0.00000000123456789")},
+		{name: "negative", input: MustFromString("-123456789.123456789")},
+		{name: "trailing-zeros", input: MustFromString("123.450000000000")},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				benchStringResult = tt.input.String()
+			}
+		})
+	}
+}
+
+func BenchmarkDecimal_NewFromString(b *testing.B) {
+	tests := []struct {
+		input string
+		name  string
+	}{
+		{name: "int", input: "123456789"},
+		{name: "same-prec", input: "12345.6789"},
+		{name: "leading-zero-fraction", input: "0.00000000123456789"},
+		{name: "negative", input: "-123456789.123456789"},
+		{name: "scientific-positive-exp", input: "1.23456789e9"},
+		{name: "scientific-negative-exp", input: "-4.56E-9"},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				d, err := NewFromString(tt.input)
+				if err != nil {
+					b.Fatalf("NewFromString(%q) returned error: %v", tt.input, err)
+				}
+				benchDecimalResult = d
+			}
+		})
+	}
+}
+
 func BenchmarkDecimal_StripTrailingZeros(b *testing.B) {
 	tests := []struct {
 		input string
