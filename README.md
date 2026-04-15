@@ -42,7 +42,24 @@ func main() {
 
 ## 构造方法
 
-`Decimal` 的构造函数全部返回值类型，算术与比较等值语义方法不会修改原值。带指针接收者的反序列化接口（如 `Unmarshal*`、`Scan`）会写入接收者。
+`Decimal` 采用**不可变值语义**：构造函数与算术/比较方法都会返回新值，不会修改原值。  
+只有显式的指针接收者方法（如 `Unmarshal*`、`Scan`）会写入接收者本身。
+
+### 不可变语义
+
+- `a.Add(b)`、`a.Sub(b)`、`a.Rescale(...)` 等调用不会改变 `a`
+- 需要“更新值”时，请显式接收返回值（例如 `a = a.Add(b)`）
+- `BigInt()` 返回底层整数的副本，不会暴露可写内部状态
+
+示例：
+
+```go
+a := decimal.MustFromString("1.20")
+b := a.Add(decimal.MustFromString("0.30"))
+
+fmt.Println(a.String()) // 1.2（a 不变）
+fmt.Println(b.String()) // 1.5
+```
 
 - `decimal.New(int64)`：按整数构造，精度为 `0`
 - `decimal.NewFromInt(int)`：按整数构造，精度为 `0`
