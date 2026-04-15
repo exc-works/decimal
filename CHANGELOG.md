@@ -13,6 +13,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Added `Decimal.UnmarshalParam(string)` to support gin `BindUnmarshaler` for query/form/uri binding.
 - Added real gin integration tests covering `ShouldBindQuery`, `ShouldBindUri`, and `ShouldBindJSON`.
 - Documented gin support and usage in `README.md`.
+- Added `RegisterGoPlaygroundValidator(*validator.Validate)` to register Decimal comparison tags:
+  `decimal_required`, `decimal_eq`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`.
+- Added exact decimal comparison for custom decimal validator tags (uses `Decimal.Cmp`, not `Float64`).
+- Added validator error-message helpers:
+  `RegisterGoPlaygroundValidatorTranslations` and `TranslateGoPlaygroundValidationErrors`.
+- Added real `go-playground/validator` and gin integration tests for `decimal_*` numeric tags on `Decimal`.
 
 ## [0.1.0] - 2026-04-15
 

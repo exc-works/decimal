@@ -206,6 +206,64 @@ if err := c.ShouldBindQuery(&req); err != nil {
 }
 ```
 
+### Validator
+
+- Use `decimal_required` to require Decimal field presence
+- Built-in `omitempty` can be used as usual
+- Decimal numeric comparison uses custom tags:
+  `decimal_eq`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`
+- Uses exact `Decimal` comparison (`Cmp`), without `Float64` conversion
+- Supports friendly error messages via translation helpers:
+  `RegisterGoPlaygroundValidatorTranslations` and `TranslateGoPlaygroundValidationErrors`
+- Register once before any validation
+
+Example:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-playground/validator/v10"
+)
+
+type Req struct {
+	Amount decimal.Decimal `validate:"decimal_required,decimal_eq=12.34"`
+}
+
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+err := v.Struct(Req{Amount: decimal.MustFromString("12.34")})
+```
+
+Friendly messages example:
+
+```go
+import (
+	"github.com/go-playground/locales/en"
+	ut "github.com/go-playground/universal-translator"
+)
+
+enLocale := en.New()
+uni := ut.New(enLocale, enLocale)
+trans, _ := uni.GetTranslator("en")
+
+_ = decimal.RegisterGoPlaygroundValidatorTranslations(v, trans)
+messages := decimal.TranslateGoPlaygroundValidationErrors(err, trans)
+```
+
+For gin:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
+)
+
+if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+	_ = decimal.RegisterGoPlaygroundValidator(v)
+}
+```
+
 ### Binary / protobuf
 
 - `MarshalBinary()` / `UnmarshalBinary()`
