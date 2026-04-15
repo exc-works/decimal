@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-15
+
 ### Added
 - Publishing baseline artifacts: `LICENSE`, CI/release workflows, package-level docs, and contributor/security guides.
 - Added `MulExact` as the clear API name for exact multiplication and kept `Mul2` as a deprecated compatibility alias.
@@ -32,5 +34,6 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - JSON/YAML/Text/Binary/SQL serialization support.
 - Extensive unit tests, examples, and benchmarks.
 
-[Unreleased]: https://github.com/exc-works/decimal/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/exc-works/decimal/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/exc-works/decimal/releases/tag/v0.2.0
 [0.1.0]: https://github.com/exc-works/decimal/releases/tag/v0.1.0
