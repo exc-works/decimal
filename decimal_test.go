@@ -875,6 +875,76 @@ func TestDecimalRescale(t *testing.T) {
 	})
 }
 
+func TestDecimalShift(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    Decimal
+		places   int
+		want     Decimal
+		wantPrec int
+	}{
+		{
+			name:     "shift right within precision",
+			input:    mustDecimal(t, "12.34"),
+			places:   1,
+			want:     mustDecimal(t, "123.4"),
+			wantPrec: 1,
+		},
+		{
+			name:     "shift right beyond precision",
+			input:    mustDecimal(t, "12.34"),
+			places:   4,
+			want:     mustDecimal(t, "123400"),
+			wantPrec: 0,
+		},
+		{
+			name:     "shift left",
+			input:    mustDecimal(t, "12.34"),
+			places:   -3,
+			want:     mustDecimal(t, "0.01234"),
+			wantPrec: 5,
+		},
+		{
+			name:     "negative value",
+			input:    mustDecimal(t, "-12.34"),
+			places:   2,
+			want:     mustDecimal(t, "-1234"),
+			wantPrec: 0,
+		},
+		{
+			name:     "zero value",
+			input:    NewWithPrec(0, 2),
+			places:   -4,
+			want:     NewWithPrec(0, 6),
+			wantPrec: 6,
+		},
+		{
+			name:     "zero places",
+			input:    mustDecimal(t, "12.34"),
+			places:   0,
+			want:     mustDecimal(t, "12.34"),
+			wantPrec: 2,
+		},
+		{
+			name:     "nil decimal",
+			input:    Decimal{},
+			places:   3,
+			want:     Zero,
+			wantPrec: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.input.Shift(tc.places)
+			assertDecimalEqual(t, got, tc.want)
+			if got.Precision() != tc.wantPrec {
+				t.Fatalf("Precision() = %d, want %d", got.Precision(), tc.wantPrec)
+			}
+		})
+	}
+}
+
 func TestDecimalIntegerRoundingMethods(t *testing.T) {
 	tests := []struct {
 		name         string

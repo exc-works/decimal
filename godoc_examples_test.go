@@ -333,6 +333,14 @@ func ExampleDecimal_RescaleDown() {
 	// 1.2
 }
 
+func ExampleDecimal_Shift() {
+	fmt.Println(MustFromString("12.34").Shift(2))
+	fmt.Println(MustFromString("12.34").Shift(-3))
+	// Output:
+	// 1234
+	// 0.01234
+}
+
 func ExampleDecimal_StripTrailingZeros() {
 	fmt.Println(MustFromString("1.2300").StripTrailingZeros())
 	// Output:

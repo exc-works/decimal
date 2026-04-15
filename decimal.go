@@ -746,6 +746,32 @@ func (d Decimal) Rescale(prec int, roundingMode RoundingMode) Decimal {
 	}
 }
 
+// Shift returns d multiplied by 10^places exactly.
+//
+// Positive places shift the decimal point to the right; negative places shift
+// it to the left.
+func (d Decimal) Shift(places int) Decimal {
+	d = initializeIfNeeded(d)
+	if places == 0 {
+		return d
+	}
+
+	targetPrec := int64(d.prec) - int64(places)
+	if targetPrec < 0 {
+		return Decimal{
+			i:    new(big.Int).Mul(d.i, safeGetPrecisionMultiplier(int(-targetPrec))),
+			prec: 0,
+		}
+	}
+	if targetPrec > stdmath.MaxInt32 {
+		panic("precision overflow")
+	}
+	return Decimal{
+		i:    d.i,
+		prec: int(targetPrec),
+	}
+}
+
 // StripTrailingZeros returns a Decimal which is numerically equal to this one
 // but with any trailing zeros removed from the representation.
 func (d Decimal) StripTrailingZeros() Decimal {

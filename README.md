@@ -119,6 +119,7 @@ fmt.Println(b.String()) // 1.5
 
 - `RescaleDown(prec)`：按 `RoundDown` 调整到目标精度
 - `Rescale(prec, decimal.RoundingMode)`：按指定舍入模式调整到目标精度
+- `Shift(places)`：精确按 `10^places` 缩放（`places>0` 左移小数点，`places<0` 右移）
 - `TruncateWithPrec(prec)` / `RoundWithPrec(prec)`：向零截断 / half-even 到目标精度
 - `FloorWithPrec(prec)` / `CeilWithPrec(prec)`：向负无穷 / 向正无穷到目标精度
 - `Truncate()` / `Round()` / `Floor()` / `Ceil()`：以上能力在 `prec=0` 下的便捷形式
