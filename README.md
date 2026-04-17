@@ -13,7 +13,17 @@ import "github.com/exc-works/decimal"
 ## User Guides
 
 - English User Guide: [docs/user-guide.en.md](docs/user-guide.en.md)
-- Chinese User Guide: [docs/user-guide.zh.md](docs/user-guide.zh.md)
+- Chinese (Simplified) User Guide: [docs/user-guide.zh.md](docs/user-guide.zh.md)
+- Chinese (Traditional) User Guide: [docs/user-guide.zh-Hant.md](docs/user-guide.zh-Hant.md)
+- Japanese User Guide: [docs/user-guide.ja.md](docs/user-guide.ja.md)
+- Korean User Guide: [docs/user-guide.ko.md](docs/user-guide.ko.md)
+- Spanish User Guide: [docs/user-guide.es.md](docs/user-guide.es.md)
+- French User Guide: [docs/user-guide.fr.md](docs/user-guide.fr.md)
+- German User Guide: [docs/user-guide.de.md](docs/user-guide.de.md)
+- Portuguese (Brazil) User Guide: [docs/user-guide.pt-BR.md](docs/user-guide.pt-BR.md)
+- Russian User Guide: [docs/user-guide.ru.md](docs/user-guide.ru.md)
+- Arabic User Guide: [docs/user-guide.ar.md](docs/user-guide.ar.md)
+- Hindi User Guide: [docs/user-guide.hi.md](docs/user-guide.hi.md)
 
 ## Quick Start
 
