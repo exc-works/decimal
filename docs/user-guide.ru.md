@@ -102,7 +102,42 @@ fmt.Println(a.Cmp(b))   // 0
 
 Сравнение выполняется по числовому значению (без учета масштаба).
 
-## 8. Сериализация и БД
+## 8. Расширенная математика
+
+```go
+x := decimal.MustFromString("100")
+log10, _ := x.Log10() // 2
+ln, _   := decimal.MustFromString("2.71828").Ln()  // ~= 1
+exp, _  := decimal.MustFromString("1").Exp()        // e
+```
+
+Все три метода возвращают ошибку при некорректном входе (`Log10` и `Ln`
+требуют положительное значение получателя). Используйте варианты
+`*WithPrec(prec)` для управления точностью результата.
+
+## 9. Форматирование и отображение
+
+`Decimal` реализует интерфейс `fmt.Formatter`, поэтому стандартные
+глаголы форматирования работают напрямую:
+
+```go
+d := decimal.MustFromString("1234.5678")
+fmt.Sprintf("%s", d)   // 1234.5678
+fmt.Sprintf("%.2f", d) // 1234.57 (RoundHalfEven)
+fmt.Sprintf("%e", d)   // 1.234568e+03
+fmt.Sprintf("%+10.1f", d) // "   +1234.6"
+```
+
+Отображение с учетом локали:
+
+```go
+d := decimal.MustFromString("12345.678")
+d.FormatWithSeparators(',', '.') // "12,345.678"
+d.FormatWithSeparators('.', ',') // "12.345,678" (европейский стиль)
+d.FormatWithSeparators(' ', '.') // "12 345.678"
+```
+
+## 10. Сериализация и БД
 
 ### JSON
 
@@ -114,6 +149,25 @@ type Item struct {
 
 `MarshalJSON()` записывает десятичные значения как строки JSON.
 
+### XML
+
+```go
+type Item struct {
+	Amount decimal.Decimal `xml:"amount"`
+}
+```
+
+Предоставляются `MarshalXML` / `UnmarshalXML` (а также варианты для
+атрибутов). Неинициализированные значения кодируются как пустой
+элемент или атрибут.
+
+### BSON (MongoDB)
+
+`Decimal` реализует `bson.ValueMarshaler` / `bson.ValueUnmarshaler` для
+`go.mongodb.org/mongo-driver/v2/bson`. Значения кодируются как строки
+BSON, а при декодировании принимаются типы String, Double, Int32, Int64,
+Decimal128 и Null.
+
 ### SQL
 
 `Decimal` реализует оба интерфейса:
@@ -123,17 +177,93 @@ type Item struct {
 
 Поэтому он напрямую работает с типичными драйверами баз данных.
 
-## 9. Частые ошибки
+### NullDecimal (столбцы, допускающие NULL)
+
+Для столбцов, которые могут содержать `NULL`, используйте `NullDecimal`:
+
+```go
+type Row struct {
+	Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+	fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+`NullDecimal` поддерживает SQL, JSON, YAML, Text, BSON, а также
+привязку в gin. Значение `null` или пустой ввод устанавливает
+`Valid=false`.
+
+## 11. Интеграция с валидатором
+
+Зарегистрируйте теги Decimal в `go-playground/validator`:
+
+```go
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+
+type Req struct {
+	Price decimal.Decimal `validate:"decimal_required,decimal_positive,decimal_max_precision=2"`
+	Rate  decimal.Decimal `validate:"decimal_between=0~1"`
+}
+```
+
+Доступные теги:
+
+- `decimal_required`, `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`,
+  `decimal_lt`, `decimal_lte`, `decimal_between` (границы через тильду, напр. `1~100`)
+- `decimal_positive`, `decimal_negative`, `decimal_nonzero` (без параметра)
+- `decimal_max_precision=N` (количество знаков после запятой ≤ N)
+
+Встроенные переводы: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
+`pt`, `pt_BR`, `ru`, `ar`, `hi`.
+
+## 12. Обработка ошибок
+
+Пакет предоставляет сигнальные ошибки для сопоставления через
+`errors.Is`:
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+	// обработка
+}
+```
+
+Доступны: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
+`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
+`ErrUnmarshal`.
+
+## 13. Конкурентность
+
+Значения `Decimal` безопасны для одновременного чтения, пока ни одна
+горутина не переприсваивает переменную. Методы с получателем по
+значению (`Add`, `Cmp`, `String`, ...) никогда не изменяют получателя.
+Методы с получателем-указателем (`Scan`, `UnmarshalJSON`, ...)
+изменяют его и требуют внешней синхронизации, если один и тот же
+`*Decimal` используется несколькими горутинами.
+
+## 14. Распространённые ошибки
 
 1. `MustFromString` вызывает panic; не используйте его для недоверенного ввода.
 2. Отрицательная точность вызывает panic.
 3. `RoundUnnecessary` вызывает panic при неточных операциях.
-4. `Log2()` вызывает panic для неположительных значений.
+4. `Log2()` вызывает panic для неположительных значений; `Log10` и `Ln`
+   возвращают ошибку.
 5. `MarshalBinary()` нормализует конечные нули.
 
-## 10. Рекомендуемые практики
+## 15. Рекомендуемые шаблоны
 
 1. Разбирайте внешний ввод через `NewFromString` и обрабатывайте ошибки.
-2. Используйте `QuoWithPrec` для любого пользовательского вывода результатов деления.
-3. Используйте `StringWithTrailingZeros` только когда требуется фиксированный масштаб отображения.
+2. Используйте `QuoWithPrec` для любого пользовательского вывода
+   результатов деления.
+3. Используйте `StringWithTrailingZeros` только когда требуется
+   фиксированный масштаб отображения.
 4. Явно фиксируйте режим округления в бизнес-правилах.
+5. Используйте `NullDecimal` для SQL-столбцов, допускающих NULL, вместо
+   обходных решений с указателями.
+6. Сопоставляйте ошибки через `errors.Is(err, decimal.ErrXxx)` для
+   переносимой обработки.

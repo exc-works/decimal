@@ -1,6 +1,7 @@
 package decimal
 
 import (
+	"errors"
 	"math"
 	"math/big"
 	"strconv"
@@ -660,34 +661,28 @@ func TestDecimalSqrtAndApproxRoot(t *testing.T) {
 		wantPrec int
 	}{
 		{
-			name:     "integer input retains source behavior",
+			name:     "integer input auto-bumps precision",
 			value:    mustDecimal(t, "4"),
-			want:     mustDecimal(t, "1"),
-			wantPrec: 0,
+			want:     mustDecimal(t, "2"),
+			wantPrec: defaultLogExpPrec,
 		},
 		{
 			name:     "scaled integer input",
 			value:    mustDecimal(t, "4.0000"),
 			want:     mustDecimal(t, "2"),
-			wantPrec: 4,
+			wantPrec: defaultLogExpPrec,
 		},
 		{
 			name:     "decimal input",
 			value:    mustDecimal(t, "16.0"),
-			want:     mustDecimal(t, "4.0"),
-			wantPrec: 1,
+			want:     mustDecimal(t, "4"),
+			wantPrec: defaultLogExpPrec,
 		},
 		{
 			name:     "fractional input",
 			value:    NewWithPrec(25, 2),
 			want:     NewWithPrec(5, 1),
-			wantPrec: 2,
-		},
-		{
-			name:     "high precision input",
-			value:    NewWithAppendPrec(2, 18),
-			want:     NewWithPrec(1414213562373095049, 18),
-			wantPrec: 18,
+			wantPrec: defaultLogExpPrec,
 		},
 	}
 
@@ -703,6 +698,32 @@ func TestDecimalSqrtAndApproxRoot(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("irrational sqrt(2) approximates within tolerance", func(t *testing.T) {
+		got, err := mustDecimal(t, "2").Sqrt()
+		if err != nil {
+			t.Fatalf("Sqrt() returned error: %v", err)
+		}
+		want := mustDecimal(t, "1.41421356237309504880168872420969807856967187537694")
+		eps := mustDecimal(t, "0.0000000000000000000000000001") // 1e-28
+		if got.Sub(want).Abs().GT(eps) {
+			t.Fatalf("Sqrt(2) = %s, want approx %s", got, want)
+		}
+	})
+
+	t.Run("SqrtWithPrec respects requested precision", func(t *testing.T) {
+		got, err := mustDecimal(t, "2").SqrtWithPrec(18)
+		if err != nil {
+			t.Fatalf("SqrtWithPrec(18) returned error: %v", err)
+		}
+		if got.Precision() != 18 {
+			t.Fatalf("Precision() = %d, want 18", got.Precision())
+		}
+		want := mustDecimal(t, "1.414213562373095049")
+		if !got.Equal(want) {
+			t.Fatalf("SqrtWithPrec(18) = %s, want %s", got, want)
+		}
+	})
 
 	t.Run("negative input returns error", func(t *testing.T) {
 		_, err := mustDecimal(t, "-4").Sqrt()
@@ -722,15 +743,15 @@ func TestDecimalSqrtAndApproxRoot(t *testing.T) {
 			name:     "fifth root of 3125",
 			value:    mustDecimal(t, "3125.0000"),
 			root:     5,
-			want:     mustDecimal(t, "5.0000"),
-			wantPrec: 4,
+			want:     mustDecimal(t, "5"),
+			wantPrec: defaultLogExpPrec,
 		},
 		{
 			name:     "fifth root of 100000",
 			value:    mustDecimal(t, "100000.0000"),
 			root:     5,
-			want:     mustDecimal(t, "10.0000"),
-			wantPrec: 4,
+			want:     mustDecimal(t, "10"),
+			wantPrec: defaultLogExpPrec,
 		},
 	}
 
@@ -747,12 +768,27 @@ func TestDecimalSqrtAndApproxRoot(t *testing.T) {
 		})
 	}
 
-	t.Run("invalid root", func(t *testing.T) {
-		if _, err := mustDecimal(t, "16.0").ApproxRoot(0); err == nil {
-			t.Fatal("expected error for zero root")
+	t.Run("ApproxRootWithPrec respects requested precision", func(t *testing.T) {
+		got, err := mustDecimal(t, "3125").ApproxRootWithPrec(5, 4)
+		if err != nil {
+			t.Fatalf("ApproxRootWithPrec returned error: %v", err)
 		}
-		if _, err := mustDecimal(t, "16.0").ApproxRoot(-2); err == nil {
-			t.Fatal("expected error for negative root")
+		if got.Precision() != 4 {
+			t.Fatalf("Precision() = %d, want 4", got.Precision())
+		}
+		if !got.Equal(mustDecimal(t, "5")) {
+			t.Fatalf("ApproxRootWithPrec(5, 4) = %s, want 5", got)
+		}
+	})
+
+	t.Run("invalid root", func(t *testing.T) {
+		_, err := mustDecimal(t, "16.0").ApproxRoot(0)
+		if !errors.Is(err, ErrInvalidRoot) {
+			t.Fatalf("expected ErrInvalidRoot for zero root, got %v", err)
+		}
+		_, err = mustDecimal(t, "16.0").ApproxRoot(-2)
+		if !errors.Is(err, ErrInvalidRoot) {
+			t.Fatalf("expected ErrInvalidRoot for negative root, got %v", err)
 		}
 	})
 

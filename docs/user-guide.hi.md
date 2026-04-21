@@ -102,7 +102,39 @@ fmt.Println(a.Cmp(b))   // 0
 
 तुलना संख्यात्मक है (स्केल (scale) से अप्रभावित)।
 
-## 8. सीरियलाइज़ेशन और DB
+## 8. उन्नत गणित
+
+```go
+x := decimal.MustFromString("100")
+log10, _ := x.Log10() // 2
+ln, _   := decimal.MustFromString("2.71828").Ln()  // ~= 1
+exp, _  := decimal.MustFromString("1").Exp()        // e
+```
+
+तीनों अमान्य इनपुट के लिए त्रुटि लौटाते हैं (`Log10`/`Ln` के लिए रिसीवर धनात्मक होना आवश्यक है)। आउटपुट परिशुद्धता को नियंत्रित करने के लिए `*WithPrec(prec)` संस्करणों का उपयोग करें।
+
+## 9. फ़ॉर्मेटिंग और प्रदर्शन
+
+`Decimal`, `fmt.Formatter` को लागू करता है, इसलिए मानक verbs काम करते हैं:
+
+```go
+d := decimal.MustFromString("1234.5678")
+fmt.Sprintf("%s", d)   // 1234.5678
+fmt.Sprintf("%.2f", d) // 1234.57 (RoundHalfEven)
+fmt.Sprintf("%e", d)   // 1.234568e+03
+fmt.Sprintf("%+10.1f", d) // "   +1234.6"
+```
+
+लोकेल-अनुरूप प्रदर्शन:
+
+```go
+d := decimal.MustFromString("12345.678")
+d.FormatWithSeparators(',', '.') // "12,345.678"
+d.FormatWithSeparators('.', ',') // "12.345,678" (European)
+d.FormatWithSeparators(' ', '.') // "12 345.678"
+```
+
+## 10. सीरियलाइज़ेशन और DB
 
 ### JSON
 
@@ -114,6 +146,20 @@ type Item struct {
 
 `MarshalJSON()` दशमलव मानों को JSON स्ट्रिंग के रूप में लिखता है।
 
+### XML
+
+```go
+type Item struct {
+	Amount decimal.Decimal `xml:"amount"`
+}
+```
+
+`MarshalXML` / `UnmarshalXML` (और एट्रिब्यूट संस्करण) उपलब्ध हैं। अप्रारंभित मान खाली एलिमेंट/एट्रिब्यूट के रूप में एनकोड होते हैं।
+
+### BSON (MongoDB)
+
+`Decimal`, `go.mongodb.org/mongo-driver/v2/bson` के लिए `bson.ValueMarshaler` / `bson.ValueUnmarshaler` को लागू करता है। मान BSON स्ट्रिंग के रूप में एनकोड होते हैं, और डिकोड पर String/Double/Int32/Int64/Decimal128/Null स्वीकार किए जाते हैं।
+
 ### SQL
 
 `Decimal` दोनों को लागू करता है:
@@ -123,17 +169,77 @@ type Item struct {
 
 इसलिए यह सामान्य डेटाबेस ड्राइवरों के साथ सीधे काम करता है।
 
-## 9. आम त्रुटियाँ
+### NullDecimal (nullable कॉलम)
+
+उन कॉलम के लिए जो `NULL` हो सकते हैं, `NullDecimal` का उपयोग करें:
+
+```go
+type Row struct {
+	Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+	fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+`NullDecimal`, SQL, JSON, YAML, Text, BSON, और gin binding को सपोर्ट करता है। `null` या खाली इनपुट `Valid=false` सेट करता है।
+
+## 11. वैलिडेटर एकीकरण
+
+`go-playground/validator` के साथ Decimal tags रजिस्टर करें:
+
+```go
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+
+type Req struct {
+	Price decimal.Decimal `validate:"decimal_required,decimal_positive,decimal_max_precision=2"`
+	Rate  decimal.Decimal `validate:"decimal_between=0~1"`
+}
+```
+
+उपलब्ध tags:
+
+- `decimal_required`, `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`,
+  `decimal_lt`, `decimal_lte`, `decimal_between` (`~` से अलग की गई सीमाएँ, जैसे `1~100`)
+- `decimal_positive`, `decimal_negative`, `decimal_nonzero` (कोई पैरामीटर नहीं)
+- `decimal_max_precision=N` (दशमलव स्थान ≤ N)
+
+अंतर्निहित अनुवाद: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`, `pt`, `pt_BR`, `ru`, `ar`, `hi`।
+
+## 12. त्रुटि प्रबंधन
+
+यह पैकेज `errors.Is` मिलान के लिए सेंटिनल त्रुटियाँ प्रदान करता है:
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+	// handle
+}
+```
+
+उपलब्ध: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`।
+
+## 13. समवर्तीता
+
+`Decimal` मान समवर्ती पढ़ने के लिए सुरक्षित हैं, बशर्ते कोई goroutine वेरिएबल को पुनः असाइन न करे। वैल्यू-रिसीवर विधियाँ (`Add`, `Cmp`, `String`, ...) कभी रिसीवर को परिवर्तित नहीं करतीं। पॉइंटर-रिसीवर विधियाँ (`Scan`, `UnmarshalJSON`, ...) परिवर्तन करती हैं और यदि एक ही `*Decimal` कई goroutines के बीच साझा किया गया है तो बाहरी सिंक्रोनाइज़ेशन आवश्यक है।
+
+## 14. सामान्य त्रुटियाँ
 
 1. `MustFromString` पैनिक करता है; इसे अविश्वसनीय इनपुट पर उपयोग न करें।
 2. ऋणात्मक परिशुद्धता पैनिक कराती है।
 3. `RoundUnnecessary` असटीक ऑपरेशनों पर पैनिक करता है।
-4. `Log2()` गैर-धनात्मक मानों के लिए पैनिक करता है।
+4. `Log2()` गैर-धनात्मक मानों के लिए पैनिक करता है; `Log10`/`Ln` त्रुटि लौटाते हैं।
 5. `MarshalBinary()` अनुगामी शून्यों को सामान्यीकृत करता है।
 
-## 10. अनुशंसित पैटर्न
+## 15. अनुशंसित पैटर्न
 
 1. बाहरी इनपुट को `NewFromString` से पार्स करें और त्रुटियों को संभालें।
 2. उपयोगकर्ता को दिखने वाले किसी भी भागफल आउटपुट के लिए `QuoWithPrec` का उपयोग करें।
 3. `StringWithTrailingZeros` का उपयोग केवल तब करें जब निश्चित प्रदर्शन स्केल (display scale) आवश्यक हो।
 4. व्यावसायिक नियमों में राउंडिंग मोड को स्पष्ट रखें।
+5. nullable SQL कॉलम के लिए पॉइंटर वर्कअराउंड के बजाय `NullDecimal` का उपयोग करें।
+6. पोर्टेबल हैंडलिंग के लिए `errors.Is(err, decimal.ErrXxx)` के माध्यम से त्रुटियों का मिलान करें।

@@ -316,9 +316,23 @@ func ExampleDecimal_Sqrt() {
 
 func ExampleDecimal_ApproxRoot() {
 	v, err := MustFromString("3125.0000").ApproxRoot(5)
-	fmt.Println(v.StringWithTrailingZeros(), err == nil)
+	fmt.Println(v, err == nil)
 	// Output:
-	// 5.0000 true
+	// 5 true
+}
+
+func ExampleDecimal_SqrtWithPrec() {
+	v, _ := MustFromString("2").SqrtWithPrec(10)
+	fmt.Println(v)
+	// Output:
+	// 1.4142135624
+}
+
+func ExampleDecimal_ApproxRootWithPrec() {
+	v, _ := MustFromString("27").ApproxRootWithPrec(3, 6)
+	fmt.Println(v)
+	// Output:
+	// 3
 }
 
 func ExampleDecimal_Log2() {
@@ -641,4 +655,79 @@ func ExampleDecimal_Size() {
 	fmt.Println(MustFromString("1.23").Size() > 0)
 	// Output:
 	// true
+}
+
+func ExampleDecimal_Log10() {
+	x := MustFromString("100")
+	result, _ := x.Log10()
+	fmt.Println(result.Rescale(0, RoundHalfEven))
+	// Output:
+	// 2
+}
+
+func ExampleDecimal_Log10WithPrec() {
+	result, _ := MustFromString("1000").Log10WithPrec(2)
+	fmt.Println(result)
+	// Output:
+	// 3
+}
+
+func ExampleDecimal_Ln() {
+	x := MustFromString("2.718281828459045235360287")
+	result, _ := x.Ln()
+	fmt.Println(result.Rescale(6, RoundHalfEven))
+	// Output:
+	// 1
+}
+
+func ExampleDecimal_Exp() {
+	result, _ := MustFromString("0").Exp()
+	fmt.Println(result)
+	// Output:
+	// 1
+}
+
+func ExampleDecimal_ExpWithPrec() {
+	result, _ := MustFromString("1").ExpWithPrec(4)
+	fmt.Println(result)
+	// Output:
+	// 2.7183
+}
+
+func ExampleDecimal_Clone() {
+	original := MustFromString("42.5")
+	copy := original.Clone()
+	fmt.Println(copy.Equal(original))
+	// Output:
+	// true
+}
+
+func ExampleNewFromDecimal() {
+	src := MustFromString("3.14")
+	dst := NewFromDecimal(src)
+	fmt.Println(dst)
+	// Output:
+	// 3.14
+}
+
+func ExampleDecimal_Format() {
+	d := MustFromString("1234.5678")
+	fmt.Printf("%s\n", d)
+	fmt.Printf("%.2f\n", d)
+	fmt.Printf("%e\n", d)
+	// Output:
+	// 1234.5678
+	// 1234.57
+	// 1.234568e+03
+}
+
+func ExampleDecimal_FormatWithSeparators() {
+	d := MustFromString("1234567.89")
+	fmt.Println(d.FormatWithSeparators(',', '.'))
+	fmt.Println(d.FormatWithSeparators('.', ','))
+	fmt.Println(d.FormatWithSeparators(' ', '.'))
+	// Output:
+	// 1,234,567.89
+	// 1.234.567,89
+	// 1 234 567.89
 }

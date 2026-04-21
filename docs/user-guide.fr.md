@@ -102,7 +102,39 @@ fmt.Println(a.Cmp(b))   // 0
 
 La comparaison est numérique (insensible à l'échelle).
 
-## 8. Sérialisation et base de données
+## 8. Mathématiques avancées
+
+```go
+x := decimal.MustFromString("100")
+log10, _ := x.Log10() // 2
+ln, _   := decimal.MustFromString("2.71828").Ln()  // ~= 1
+exp, _  := decimal.MustFromString("1").Exp()        // e
+```
+
+Les trois fonctions renvoient une erreur en cas d'entrée invalide (`Log10`/`Ln` exigent un récepteur strictement positif). Utilisez les variantes `*WithPrec(prec)` pour contrôler la précision de sortie.
+
+## 9. Formatage et affichage
+
+`Decimal` implémente `fmt.Formatter`, ce qui permet d'utiliser les verbes standard :
+
+```go
+d := decimal.MustFromString("1234.5678")
+fmt.Sprintf("%s", d)   // 1234.5678
+fmt.Sprintf("%.2f", d) // 1234.57 (RoundHalfEven)
+fmt.Sprintf("%e", d)   // 1.234568e+03
+fmt.Sprintf("%+10.1f", d) // "   +1234.6"
+```
+
+Affichage adapté à la locale :
+
+```go
+d := decimal.MustFromString("12345.678")
+d.FormatWithSeparators(',', '.') // "12,345.678"
+d.FormatWithSeparators('.', ',') // "12.345,678" (European)
+d.FormatWithSeparators(' ', '.') // "12 345.678"
+```
+
+## 10. Sérialisation et base de données
 
 ### JSON
 
@@ -114,6 +146,20 @@ type Item struct {
 
 `MarshalJSON()` écrit les valeurs décimales sous forme de chaînes JSON.
 
+### XML
+
+```go
+type Item struct {
+	Amount decimal.Decimal `xml:"amount"`
+}
+```
+
+`MarshalXML` / `UnmarshalXML` (ainsi que leurs variantes pour les attributs) sont fournis. Les valeurs non initialisées sont encodées sous forme d'élément/d'attribut vide.
+
+### BSON (MongoDB)
+
+`Decimal` implémente `bson.ValueMarshaler` / `bson.ValueUnmarshaler` pour `go.mongodb.org/mongo-driver/v2/bson`. Les valeurs sont encodées sous forme de chaînes BSON, et les types String/Double/Int32/Int64/Decimal128/Null sont acceptés au décodage.
+
 ### SQL
 
 `Decimal` implémente les deux interfaces suivantes :
@@ -123,17 +169,76 @@ type Item struct {
 
 Il fonctionne donc directement avec les pilotes de base de données classiques.
 
-## 9. Pièges courants
+### NullDecimal (colonnes nullables)
+
+Pour les colonnes pouvant être `NULL`, utilisez `NullDecimal` :
+
+```go
+type Row struct {
+	Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+	fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+`NullDecimal` prend en charge SQL, JSON, YAML, Text, BSON et le binding gin. Une entrée `null` ou vide positionne `Valid=false`.
+
+## 11. Intégration avec le validateur
+
+Enregistrez les tags Decimal auprès de `go-playground/validator` :
+
+```go
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+
+type Req struct {
+	Price decimal.Decimal `validate:"decimal_required,decimal_positive,decimal_max_precision=2"`
+	Rate  decimal.Decimal `validate:"decimal_between=0~1"`
+}
+```
+
+Tags disponibles :
+
+- `decimal_required`, `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`, `decimal_between` (bornes séparées par un tilde, p. ex. `1~100`)
+- `decimal_positive`, `decimal_negative`, `decimal_nonzero` (sans paramètre)
+- `decimal_max_precision=N` (nombre de décimales ≤ N)
+
+Traductions intégrées : `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`, `pt`, `pt_BR`, `ru`, `ar`, `hi`.
+
+## 12. Gestion des erreurs
+
+Le package expose des erreurs sentinelles compatibles avec `errors.Is` :
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+	// handle
+}
+```
+
+Disponibles : `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`.
+
+## 13. Concurrence
+
+Les valeurs `Decimal` sont sûres en accès concurrent en lecture tant qu'aucune goroutine ne réassigne la variable. Les méthodes à récepteur valeur (`Add`, `Cmp`, `String`, ...) ne modifient jamais le récepteur. Les méthodes à récepteur pointeur (`Scan`, `UnmarshalJSON`, ...) modifient le récepteur et exigent une synchronisation externe si le même `*Decimal` est partagé entre plusieurs goroutines.
+
+## 14. Pièges courants
 
 1. `MustFromString` panique ; ne l'utilisez pas sur des entrées non fiables.
 2. Une précision négative provoque une panique.
 3. `RoundUnnecessary` panique sur les opérations inexactes.
-4. `Log2()` panique pour les valeurs non positives.
+4. `Log2()` panique pour les valeurs non positives ; `Log10`/`Ln` renvoient une erreur.
 5. `MarshalBinary()` normalise les zéros de fin.
 
-## 10. Modèles recommandés
+## 15. Modèles recommandés
 
 1. Analysez les entrées externes avec `NewFromString` et gérez les erreurs.
 2. Utilisez `QuoWithPrec` pour toute sortie de division visible par l'utilisateur.
 3. Utilisez `StringWithTrailingZeros` uniquement lorsqu'une échelle d'affichage fixe est requise.
 4. Gardez le mode d'arrondi explicite dans les règles métier.
+5. Utilisez `NullDecimal` pour les colonnes SQL nullables plutôt que des contournements à base de pointeurs.
+6. Faites correspondre les erreurs via `errors.Is(err, decimal.ErrXxx)` pour une gestion portable.

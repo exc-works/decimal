@@ -5,9 +5,28 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 )
+
+// decimalFromFloat64 is the non-panicking counterpart of NewFromFloat64.
+// It is used by unmarshal paths that must reject NaN/±Inf with a wrapped
+// ErrUnmarshal instead of the panic MustFromString would produce.
+func decimalFromFloat64(f float64) (Decimal, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return Decimal{}, fmt.Errorf("decimal: non-finite float %v: %w", f, ErrUnmarshal)
+	}
+	return NewFromFloat64(f), nil
+}
+
+// decimalFromFloat32 is the non-panicking counterpart of NewFromFloat32.
+func decimalFromFloat32(f float32) (Decimal, error) {
+	if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+		return Decimal{}, fmt.Errorf("decimal: non-finite float %v: %w", f, ErrUnmarshal)
+	}
+	return NewFromFloat32(f), nil
+}
 
 const (
 	PrecisionFixedSize = 4
@@ -193,13 +212,21 @@ func (d *Decimal) UnmarshalYAML(unmarshal func(any) error) error {
 		*d = NewFromUint64(v, 0)
 		return nil
 	case float32:
-		*d = NewFromFloat32(v)
+		parsed, err := decimalFromFloat32(v)
+		if err != nil {
+			return err
+		}
+		*d = parsed
 		return nil
 	case float64:
-		*d = NewFromFloat64(v)
+		parsed, err := decimalFromFloat64(v)
+		if err != nil {
+			return err
+		}
+		*d = parsed
 		return nil
 	default:
-		return fmt.Errorf("could not convert YAML value of type '%T' to Decimal", raw)
+		return fmt.Errorf("could not convert YAML value of type '%T' to Decimal: %w", raw, ErrUnmarshal)
 	}
 }
 
@@ -254,8 +281,8 @@ func (d *Decimal) UnmarshalBinary(data []byte) error {
 	}
 
 	if len(data) < PrecisionFixedSize {
-		return fmt.Errorf("error decoding binary %v: expected at least %d bytes, got %v",
-			data, PrecisionFixedSize, len(data))
+		return fmt.Errorf("error decoding binary %v: expected at least %d bytes, got %v: %w",
+			data, PrecisionFixedSize, len(data), ErrUnmarshal)
 	}
 
 	// Read the precision as fixed-width bytes.
@@ -285,12 +312,20 @@ func (d *Decimal) Scan(value any) error {
 	switch v := value.(type) {
 
 	case float32:
-		*d = NewFromFloat32(v)
+		parsed, err := decimalFromFloat32(v)
+		if err != nil {
+			return err
+		}
+		*d = parsed
 		return nil
 
 	case float64:
 		// numeric in sqlite3 sends us float64
-		*d = NewFromFloat64(v)
+		parsed, err := decimalFromFloat64(v)
+		if err != nil {
+			return err
+		}
+		*d = parsed
 		return nil
 
 	case int64:

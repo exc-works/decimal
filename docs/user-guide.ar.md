@@ -102,7 +102,40 @@ fmt.Println(a.Cmp(b))   // 0
 
 المقارنة رقمية (غير حساسة للمقياس).
 
-## 8. التسلسل وقاعدة البيانات
+## 8. الرياضيات المتقدمة
+
+```go
+x := decimal.MustFromString("100")
+log10, _ := x.Log10() // 2
+ln, _   := decimal.MustFromString("2.71828").Ln()  // ~= 1
+exp, _  := decimal.MustFromString("1").Exp()        // e
+```
+
+تُعيد الدوال الثلاث خطأً عند المدخلات غير الصالحة (`Log10`/`Ln` تتطلبان
+مُستقبِلًا موجبًا). استخدم متغيرات `*WithPrec(prec)` للتحكم في دقة الناتج.
+
+## 9. التنسيق والعرض
+
+يُطبّق `Decimal` الواجهة `fmt.Formatter`، لذا تعمل رموز التنسيق القياسية:
+
+```go
+d := decimal.MustFromString("1234.5678")
+fmt.Sprintf("%s", d)   // 1234.5678
+fmt.Sprintf("%.2f", d) // 1234.57 (RoundHalfEven)
+fmt.Sprintf("%e", d)   // 1.234568e+03
+fmt.Sprintf("%+10.1f", d) // "   +1234.6"
+```
+
+عرض مُراعٍ للّغة المحلية:
+
+```go
+d := decimal.MustFromString("12345.678")
+d.FormatWithSeparators(',', '.') // "12,345.678"
+d.FormatWithSeparators('.', ',') // "12.345,678" (European)
+d.FormatWithSeparators(' ', '.') // "12 345.678"
+```
+
+## 10. التسلسل وقاعدة البيانات
 
 ### JSON
 
@@ -114,6 +147,24 @@ type Item struct {
 
 `MarshalJSON()` يخرّج القيم العشرية كسلاسل نصية في JSON.
 
+### XML
+
+```go
+type Item struct {
+	Amount decimal.Decimal `xml:"amount"`
+}
+```
+
+تتوفر الدوال `MarshalXML` / `UnmarshalXML` (بالإضافة إلى متغيرات السمات).
+القيم غير المُهيَّأة تُرمَّز كعنصر/سمة فارغة.
+
+### BSON (MongoDB)
+
+يُطبّق `Decimal` الواجهتين `bson.ValueMarshaler` / `bson.ValueUnmarshaler`
+لحزمة `go.mongodb.org/mongo-driver/v2/bson`. تُرمَّز القيم كسلاسل BSON نصية،
+ويُقبَل عند فكّ الترميز كلٌّ من String و Double و Int32 و Int64 و Decimal128
+و Null.
+
 ### SQL
 
 `Decimal` يطبّق كلتا الواجهتين:
@@ -123,17 +174,85 @@ type Item struct {
 
 لذلك يعمل مباشرةً مع مشغلات قواعد البيانات الشائعة.
 
-## 9. الأخطاء الشائعة
+### NullDecimal (الأعمدة القابلة للإبطال)
+
+للأعمدة التي قد تحمل القيمة `NULL`، استخدم `NullDecimal`:
+
+```go
+type Row struct {
+	Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+	fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+يدعم `NullDecimal` كلًّا من SQL و JSON و YAML و Text و BSON وربط gin.
+المدخل `null` أو الفارغ يضبط `Valid=false`.
+
+## 11. التكامل مع المدقق
+
+سجّل وسوم Decimal مع `go-playground/validator`:
+
+```go
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+
+type Req struct {
+	Price decimal.Decimal `validate:"decimal_required,decimal_positive,decimal_max_precision=2"`
+	Rate  decimal.Decimal `validate:"decimal_between=0~1"`
+}
+```
+
+الوسوم المتاحة:
+
+- `decimal_required`, `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`,
+  `decimal_lt`, `decimal_lte`, `decimal_between` (الحدود مفصولة بعلامة `~`، مثل `1~100`)
+- `decimal_positive`, `decimal_negative`, `decimal_nonzero` (بدون وسيط)
+- `decimal_max_precision=N` (المنازل العشرية ≤ N)
+
+الترجمات المدمجة: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
+`pt`, `pt_BR`, `ru`, `ar`, `hi`.
+
+## 12. معالجة الأخطاء
+
+تكشف الحزمة عن أخطاء حارسة للمطابقة عبر `errors.Is`:
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+	// handle
+}
+```
+
+المتاح: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
+`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
+`ErrUnmarshal`.
+
+## 13. التزامن
+
+قيم `Decimal` آمنة للقراءة المتزامنة ما دام لا توجد غوروتين تُعيد تعيين
+المتغيّر. الدوال ذات المُستقبِل بالقيمة (`Add`, `Cmp`, `String`, ...) لا تُعدّل
+المُستقبِل أبدًا. أما الدوال ذات المُستقبِل بالمؤشر (`Scan`, `UnmarshalJSON`,
+...) فتُعدّله، وتتطلب مزامنة خارجية إذا تمّت مشاركة نفس `*Decimal` بين عدة
+غوروتينات.
+
+## 14. المزالق الشائعة
 
 1. `MustFromString` يؤدي إلى panic؛ لا تستخدمه مع مدخلات غير موثوقة.
 2. الدقة السالبة تؤدي إلى panic.
 3. `RoundUnnecessary` يؤدي إلى panic عند العمليات غير الدقيقة.
-4. `Log2()` يؤدي إلى panic للقيم غير الموجبة.
+4. `Log2()` يؤدي إلى panic للقيم غير الموجبة؛ بينما `Log10`/`Ln` تُعيدان خطأً.
 5. `MarshalBinary()` يطبّع الأصفار اللاحقة.
 
-## 10. الأنماط الموصى بها
+## 15. الأنماط الموصى بها
 
 1. حلّل المدخلات الخارجية باستخدام `NewFromString` وتعامل مع الأخطاء.
 2. استخدم `QuoWithPrec` لأي مخرجات قسمة مرئية للمستخدم.
 3. استخدم `StringWithTrailingZeros` فقط عندما تكون هناك حاجة إلى مقياس عرض ثابت.
 4. اجعل وضع التقريب صريحًا في قواعد العمل.
+5. استخدم `NullDecimal` للأعمدة القابلة للإبطال في SQL بدلًا من الحلول البديلة بالمؤشرات.
+6. طابق الأخطاء عبر `errors.Is(err, decimal.ErrXxx)` لمعالجة قابلة للنقل.

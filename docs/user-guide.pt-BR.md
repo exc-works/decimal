@@ -102,7 +102,40 @@ fmt.Println(a.Cmp(b))   // 0
 
 A comparação é numérica (insensível à escala).
 
-## 8. Serialização e Banco de Dados
+## 8. Matemática Avançada
+
+```go
+x := decimal.MustFromString("100")
+log10, _ := x.Log10() // 2
+ln, _   := decimal.MustFromString("2.71828").Ln()  // ~= 1
+exp, _  := decimal.MustFromString("1").Exp()        // e
+```
+
+Os três retornam erro para entradas inválidas (`Log10`/`Ln` exigem um receptor
+positivo). Use as variantes `*WithPrec(prec)` para controlar a precisão de saída.
+
+## 9. Formatação e Exibição
+
+`Decimal` implementa `fmt.Formatter`, portanto os verbos padrão funcionam:
+
+```go
+d := decimal.MustFromString("1234.5678")
+fmt.Sprintf("%s", d)   // 1234.5678
+fmt.Sprintf("%.2f", d) // 1234.57 (RoundHalfEven)
+fmt.Sprintf("%e", d)   // 1.234568e+03
+fmt.Sprintf("%+10.1f", d) // "   +1234.6"
+```
+
+Exibição sensível à localidade:
+
+```go
+d := decimal.MustFromString("12345.678")
+d.FormatWithSeparators(',', '.') // "12,345.678"
+d.FormatWithSeparators('.', ',') // "12.345,678" (European)
+d.FormatWithSeparators(' ', '.') // "12 345.678"
+```
+
+## 10. Serialização e Banco de Dados
 
 ### JSON
 
@@ -114,6 +147,23 @@ type Item struct {
 
 `MarshalJSON()` grava valores decimais como strings JSON.
 
+### XML
+
+```go
+type Item struct {
+	Amount decimal.Decimal `xml:"amount"`
+}
+```
+
+`MarshalXML` / `UnmarshalXML` (além das variantes para atributos) são fornecidos.
+Valores não inicializados são codificados como elemento/atributo vazio.
+
+### BSON (MongoDB)
+
+`Decimal` implementa `bson.ValueMarshaler` / `bson.ValueUnmarshaler` para
+`go.mongodb.org/mongo-driver/v2/bson`. Os valores são codificados como strings
+BSON, e String/Double/Int32/Int64/Decimal128/Null são aceitos na decodificação.
+
 ### SQL
 
 `Decimal` implementa ambos:
@@ -123,17 +173,85 @@ type Item struct {
 
 Portanto, ele funciona diretamente com drivers de banco de dados comuns.
 
-## 9. Armadilhas Comuns
+### NullDecimal (colunas anuláveis)
+
+Para colunas que podem ser `NULL`, use `NullDecimal`:
+
+```go
+type Row struct {
+	Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+	fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+`NullDecimal` suporta SQL, JSON, YAML, Text, BSON e binding do gin. Entrada
+`null` ou vazia define `Valid=false`.
+
+## 11. Integração com validator
+
+Registre as tags do Decimal com `go-playground/validator`:
+
+```go
+v := validator.New()
+_ = decimal.RegisterGoPlaygroundValidator(v)
+
+type Req struct {
+	Price decimal.Decimal `validate:"decimal_required,decimal_positive,decimal_max_precision=2"`
+	Rate  decimal.Decimal `validate:"decimal_between=0~1"`
+}
+```
+
+Tags disponíveis:
+
+- `decimal_required`, `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`,
+  `decimal_lt`, `decimal_lte`, `decimal_between` (limites separados por til, p. ex. `1~100`)
+- `decimal_positive`, `decimal_negative`, `decimal_nonzero` (sem parâmetro)
+- `decimal_max_precision=N` (casas decimais ≤ N)
+
+Traduções integradas: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
+`pt`, `pt_BR`, `ru`, `ar`, `hi`.
+
+## 12. Tratamento de Erros
+
+O pacote expõe erros sentinela para correspondência com `errors.Is`:
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+	// handle
+}
+```
+
+Disponíveis: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
+`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
+`ErrUnmarshal`.
+
+## 13. Concorrência
+
+Os valores de `Decimal` são seguros para acesso concorrente de leitura desde
+que nenhuma goroutine reatribua a variável. Os métodos com receptor por valor
+(`Add`, `Cmp`, `String`, ...) nunca alteram o receptor. Os métodos com receptor
+por ponteiro (`Scan`, `UnmarshalJSON`, ...) alteram o valor e exigem
+sincronização externa se o mesmo `*Decimal` for compartilhado entre goroutines.
+
+## 14. Armadilhas Comuns
 
 1. `MustFromString` gera panic; não o use com entrada não confiável.
 2. Precisão negativa gera panic.
 3. `RoundUnnecessary` gera panic em operações inexatas.
-4. `Log2()` gera panic para valores não positivos.
+4. `Log2()` gera panic para valores não positivos; `Log10`/`Ln` retornam erro.
 5. `MarshalBinary()` normaliza zeros à direita.
 
-## 10. Padrões Recomendados
+## 15. Padrões Recomendados
 
 1. Analise entradas externas com `NewFromString` e trate erros.
 2. Use `QuoWithPrec` para qualquer saída de divisão visível ao usuário.
 3. Use `StringWithTrailingZeros` somente quando uma escala fixa de exibição for necessária.
 4. Mantenha o modo de arredondamento explícito nas regras de negócio.
+5. Use `NullDecimal` para colunas SQL anuláveis em vez de soluções com ponteiros.
+6. Faça correspondência de erros via `errors.Is(err, decimal.ErrXxx)` para um tratamento portátil.

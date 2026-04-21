@@ -2,6 +2,8 @@ package decimal
 
 import (
 	"encoding/json"
+	"errors"
+	"math"
 	"math/big"
 	"testing"
 )
@@ -418,5 +420,57 @@ func TestProtoCompatMethods(t *testing.T) {
 	}
 	if decoded.String() != "9.876" {
 		t.Fatalf("Unmarshal() = %s, want 9.876", decoded.String())
+	}
+}
+
+func TestScan_NonFiniteFloat(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{
+		{"float64 NaN", math.NaN()},
+		{"float64 +Inf", math.Inf(1)},
+		{"float64 -Inf", math.Inf(-1)},
+		{"float32 NaN", float32(math.NaN())},
+		{"float32 +Inf", float32(math.Inf(1))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var d Decimal
+			err := d.Scan(tc.value)
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !errors.Is(err, ErrUnmarshal) {
+				t.Fatalf("expected ErrUnmarshal wrap, got %v", err)
+			}
+		})
+	}
+}
+
+func TestUnmarshalYAML_NonFiniteFloat(t *testing.T) {
+	cases := []struct {
+		name  string
+		value any
+	}{
+		{"float64 NaN", math.NaN()},
+		{"float64 +Inf", math.Inf(1)},
+		{"float32 -Inf", float32(math.Inf(-1))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var d Decimal
+			err := d.UnmarshalYAML(func(out any) error {
+				ptr := out.(*any)
+				*ptr = tc.value
+				return nil
+			})
+			if err == nil {
+				t.Fatalf("expected error, got nil")
+			}
+			if !errors.Is(err, ErrUnmarshal) {
+				t.Fatalf("expected ErrUnmarshal wrap, got %v", err)
+			}
+		})
 	}
 }

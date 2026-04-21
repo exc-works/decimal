@@ -62,7 +62,7 @@ func unquoteIfQuoted(value any) (string, error) {
 	case []byte:
 		bytes = v
 	default:
-		return "", fmt.Errorf("could not convert value '%+v' to byte array of type '%T'", value, value)
+		return "", fmt.Errorf("could not convert value '%+v' to byte array of type '%T': %w", value, value, ErrUnmarshal)
 	}
 
 	if len(bytes) > 2 && bytes[0] == '"' && bytes[len(bytes)-1] == '"' {

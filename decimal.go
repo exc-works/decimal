@@ -65,6 +65,12 @@ func New(value int64) Decimal {
 	return NewFromBigInt(big.NewInt(value))
 }
 
+// NewFromDecimal returns a deep copy of d. It is provided for API symmetry
+// with the other NewFrom* constructors and is equivalent to d.Clone().
+func NewFromDecimal(d Decimal) Decimal {
+	return d.Clone()
+}
+
 // NewFromInt returns a Decimal created from value with precision 0.
 func NewFromInt(value int) Decimal {
 	return NewFromBigInt(big.NewInt(int64(value)))
@@ -93,7 +99,7 @@ func NewFromFloat32(value float32) Decimal {
 // terminating decimal (for example 1/3).
 func NewFromBigRat(value *big.Rat) (Decimal, error) {
 	if value == nil {
-		return Decimal{}, errors.New("big.Rat cannot be nil")
+		return Decimal{}, fmt.Errorf("big.Rat cannot be nil: %w", ErrInvalidFormat)
 	}
 
 	num := new(big.Int).Set(value.Num())
@@ -106,7 +112,7 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 	twos, rem := countFactor(den, 2)
 	fives, rem := countFactor(rem, 5)
 	if rem.Cmp(oneInt) != 0 {
-		return Decimal{}, fmt.Errorf("can't convert %s to decimal: non-terminating decimal", value.RatString())
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: non-terminating decimal: %w", value.RatString(), ErrInvalidFormat)
 	}
 
 	prec := twos
@@ -130,7 +136,7 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) (Decimal, error) {
 	requireNonNegativePrecision(prec)
 	if value == nil {
-		return Decimal{}, errors.New("big.Rat cannot be nil")
+		return Decimal{}, fmt.Errorf("big.Rat cannot be nil: %w", ErrInvalidFormat)
 	}
 
 	num := new(big.Int).Set(value.Num())
@@ -260,7 +266,7 @@ func NewFromUint64(value uint64, precision int) Decimal {
 func NewFromString(str string) (d Decimal, err error) {
 	str = strings.TrimSpace(str)
 	if len(str) == 0 {
-		return Decimal{}, errors.New("decimal string cannot be empty")
+		return Decimal{}, fmt.Errorf("decimal string cannot be empty: %w", ErrInvalidFormat)
 	}
 
 	// Parse scientific notation first
@@ -270,7 +276,7 @@ func NewFromString(str string) (d Decimal, err error) {
 		// Parse the exponent
 		expStr := str[eIndex+1:]
 		if len(expStr) == 0 {
-			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent", str)
+			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent: %w", str, ErrInvalidFormat)
 		}
 
 		// Handle optional sign in exponent
@@ -284,16 +290,15 @@ func NewFromString(str string) (d Decimal, err error) {
 		}
 
 		if len(expStr) == 0 {
-			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent value", str)
+			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent value: %w", str, ErrInvalidFormat)
 		}
 
 		expInt, err := strconv.ParseInt(expStr, 10, 32)
 		if err != nil {
-			var e *strconv.NumError
-			if errors.As(err, &e) && errors.Is(e.Err, strconv.ErrRange) {
-				return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent too large", str)
+			if e, ok := errors.AsType[*strconv.NumError](err); ok && errors.Is(e.Err, strconv.ErrRange) {
+				return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent too large: %w", str, ErrInvalidFormat)
 			}
-			return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent is not numeric", str)
+			return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent is not numeric: %w", str, ErrInvalidFormat)
 		}
 
 		expOffset = expSign * expInt
@@ -308,7 +313,7 @@ func NewFromString(str string) (d Decimal, err error) {
 	}
 
 	if len(str) == 0 {
-		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string", str)
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string: %w", str, ErrInvalidFormat)
 	}
 
 	// Parse the mantissa (number part without exponent)
@@ -320,15 +325,15 @@ func NewFromString(str string) (d Decimal, err error) {
 		precision = len(strs[1])
 		// Maintain backward compatibility: reject formats like "1." and ".1"
 		if len(combinedStr) == 0 || precision == 0 {
-			return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string", str)
+			return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string: %w", str, ErrInvalidFormat)
 		}
 		combinedStr += strs[1]
 	} else if len(strs) > 2 {
-		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string", str)
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string: %w", str, ErrInvalidFormat)
 	}
 
 	if combinedStr == "" {
-		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string", str)
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string: %w", str, ErrInvalidFormat)
 	}
 
 	// Apply exponent offset to precision
@@ -337,7 +342,7 @@ func NewFromString(str string) (d Decimal, err error) {
 	// Parse the combined string as big.Int first
 	combined, ok := new(big.Int).SetString(combinedStr, 10)
 	if !ok {
-		return Decimal{}, fmt.Errorf("failed to set decimal string: %s", combinedStr)
+		return Decimal{}, fmt.Errorf("failed to set decimal string %s: %w", combinedStr, ErrInvalidFormat)
 	}
 
 	if precision < 0 {
@@ -615,45 +620,104 @@ func (d Decimal) Power(power int64) Decimal {
 	return resultD.MulExact(tmp).Rescale(d.prec, RoundHalfEven)
 }
 
-// Sqrt returns an approximate square root of d using iterative refinement.
-// It returns an error for negative inputs.
-func (d Decimal) Sqrt() (guess Decimal, err error) {
-	return d.ApproxRoot(2)
+// Sqrt returns an approximate square root of d.
+//
+// Note: since v0.3.0 the output precision is max(d.Precision(), 30), which is
+// a breaking change relative to v0.2.x where the result matched the receiver
+// precision exactly. Callers that need the previous behavior should use
+// SqrtWithPrec(d.Precision()) explicitly.
+//
+// It returns an error wrapping ErrNegativeRoot when d is negative. The
+// output precision is max(d.prec, defaultLogExpPrec) so that integer
+// receivers still produce meaningful results.
+func (d Decimal) Sqrt() (Decimal, error) {
+	d = initializeIfNeeded(d)
+	return d.SqrtWithPrec(workingLogPrec(d))
 }
 
-// ApproxRoot returns an approximate root of d for the given root value.
-// It uses iterative refinement and stops when converged or when maxIterations is reached.
-// It returns an error if root <= 0 or if d is negative and root is even.
-func (d Decimal) ApproxRoot(root int64) (guess Decimal, err error) {
-	if root <= 0 {
-		return Decimal{}, fmt.Errorf("root must be greater than 0")
-	}
+// SqrtWithPrec returns an approximate square root of d rescaled to prec
+// decimal places using RoundHalfEven.
+//
+// Note: since v0.3.0 callers that pass prec smaller than 30 still observe a
+// lifted working precision internally, but the final result is rescaled to
+// the requested prec. Pass d.Precision() to reproduce the v0.2.x behavior of
+// matching the receiver precision.
+//
+// It returns an error wrapping ErrNegativeRoot when d is negative.
+// It panics if prec is negative.
+func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
+	return d.ApproxRootWithPrec(2, prec)
+}
 
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				err = errors.New("out of bounds")
-			}
-		}
-	}()
+// ApproxRoot returns an approximate integer-th root of d using iterative
+// refinement.
+//
+// Note: since v0.3.0 the output precision is max(d.Precision(), 30), which is
+// a breaking change relative to v0.2.x where the result matched the receiver
+// precision exactly. Callers that need the previous behavior should use
+// ApproxRootWithPrec(root, d.Precision()) explicitly.
+//
+// It returns an error wrapping ErrInvalidRoot when root is not strictly
+// positive, or ErrNegativeRoot when d is negative and root is even. The
+// output precision is max(d.prec, defaultLogExpPrec).
+func (d Decimal) ApproxRoot(root int64) (Decimal, error) {
+	d = initializeIfNeeded(d)
+	return d.ApproxRootWithPrec(root, workingLogPrec(d))
+}
+
+// ApproxRootWithPrec returns an approximate integer-th root of d rescaled to
+// prec decimal places using RoundHalfEven.
+//
+// Note: since v0.3.0 callers that pass prec smaller than 30 still observe a
+// lifted working precision internally, but the final result is rescaled to
+// the requested prec. Pass d.Precision() to reproduce the v0.2.x behavior of
+// matching the receiver precision.
+//
+// It returns an error wrapping ErrInvalidRoot when root is not strictly
+// positive, or ErrNegativeRoot when d is negative and root is even.
+// It panics if prec is negative.
+func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
+	requireNonNegativePrecision(prec)
+	if root <= 0 {
+		return Decimal{}, fmt.Errorf("ApproxRoot: root %d must be greater than 0: %w", root, ErrInvalidRoot)
+	}
 
 	d = initializeIfNeeded(d)
 	if d.IsNegative() {
 		if root%2 == 0 {
-			return Decimal{}, fmt.Errorf("cannot take even root of negative value")
+			return Decimal{}, fmt.Errorf("ApproxRoot(%s, %d): cannot take even root of negative value: %w", d.String(), root, ErrNegativeRoot)
 		}
-		absRoot, err := d.Neg().ApproxRoot(root)
-		return absRoot.Neg(), err
+		absRoot, err := d.Neg().ApproxRootWithPrec(root, prec)
+		if err != nil {
+			return Decimal{}, err
+		}
+		return absRoot.Neg(), nil
 	}
 
-	if root == 1 || d.IsZero() || d.Equal(One) {
-		return d, nil
+	if root == 1 {
+		return d.Rescale(prec, RoundHalfEven), nil
+	}
+	if d.IsZero() {
+		return NewWithAppendPrec(0, prec), nil
+	}
+	if d.Equal(One) {
+		return NewWithAppendPrec(1, prec), nil
+	}
+
+	// Compute at a precision that absorbs rounding through the iteration
+	// and rescale the input up (losslessly) when needed so intermediate
+	// deltas have room to represent fractional digits.
+	work := prec + 6
+	if work < defaultLogExpPrec {
+		work = defaultLogExpPrec
+	}
+	dWork := d
+	if d.prec < work {
+		dWork = d.Rescale(work, RoundHalfEven)
 	}
 
 	rootInt := big.NewInt(0).SetInt64(root)
-	guess = NewWithAppendPrec(1, d.prec)
+	guess := NewWithAppendPrec(1, dWork.prec)
 	delta := guess
 
 	for iter := 0; delta.Abs().i.Cmp(oneInt) > 0 && iter < maxIterations; iter++ {
@@ -661,15 +725,15 @@ func (d Decimal) ApproxRoot(root int64) (guess Decimal, err error) {
 		if prev.IsZero() {
 			prev = One
 		}
-		delta = d.Quo(prev, RoundHalfEven)
+		delta = dWork.Quo(prev, RoundHalfEven)
 		delta = delta.Sub(guess)
 
 		quo := new(big.Int).Quo(delta.i, rootInt)
-		delta = Decimal{i: quo, prec: d.prec}
+		delta = Decimal{i: quo, prec: dWork.prec}
 
 		guess = guess.Add(delta)
 	}
-	return
+	return guess.Rescale(prec, RoundHalfEven), nil
 }
 
 // Log2 returns an approximate log base 2 of d via iterative refinement.
@@ -1115,4 +1179,525 @@ func countFactor(value *big.Int, factor int64) (count int, remainder *big.Int) {
 		remainder.Quo(remainder, divisor)
 		count++
 	}
+}
+
+// Clone returns a deep copy of d. The returned Decimal shares no mutable state
+// with d, so mutating the underlying big.Int of either value will not affect
+// the other.
+func (d Decimal) Clone() Decimal {
+	if d.i == nil {
+		return Decimal{}
+	}
+	return Decimal{i: new(big.Int).Set(d.i), prec: d.prec}
+}
+
+// Format implements fmt.Formatter, providing support for the common numeric
+// verbs along with width, precision, and flag handling.
+//
+// Supported verbs:
+//
+//	%v, %s  the canonical string form (same as String)
+//	%q      the canonical string form wrapped in quotes
+//	%d      the integer value; only valid for integer Decimals. Non-integer
+//	        values produce the %!d(decimal.Decimal=<string>) error marker so
+//	        callers do not silently truncate fractional digits.
+//	%f      fixed-point notation; precision selects fractional digits
+//	%e, %E  scientific notation (default precision 6)
+//	%g, %G  the shorter of %e or %f for the given precision
+//	%b      binary representation of the unscaled big.Int with a scale tag
+//
+// Width, precision, '-', '+', ' ', and '0' flags are honored where they make
+// sense for the chosen verb.
+func (d Decimal) Format(f fmt.State, verb rune) {
+	dInit := initializeIfNeeded(d)
+
+	// Build the core string representation for the verb.
+	var core string
+	switch verb {
+	case 'v', 's':
+		core = dInit.String()
+	case 'q':
+		core = strconv.Quote(dInit.String())
+	case 'd':
+		if !dInit.IsInteger() {
+			fmt.Fprintf(f, "%%!d(decimal.Decimal=%s)", dInit.String())
+			return
+		}
+		intPart, _ := dInit.Remainder()
+		core = intPart.String()
+		if prec, ok := f.Precision(); ok {
+			neg := strings.HasPrefix(core, "-")
+			digits := core
+			if neg {
+				digits = digits[1:]
+			}
+			if prec == 0 && digits == "0" {
+				digits = ""
+			} else if len(digits) < prec {
+				digits = strings.Repeat("0", prec-len(digits)) + digits
+			}
+			if neg {
+				core = "-" + digits
+			} else {
+				core = digits
+			}
+		}
+	case 'f', 'F':
+		if prec, ok := f.Precision(); ok {
+			rescaled := dInit.Rescale(prec, RoundHalfEven)
+			core = rescaled.StringWithTrailingZeros()
+			if prec == 0 && f.Flag('#') {
+				core += "."
+			}
+		} else {
+			core = dInit.StringWithTrailingZeros()
+			if f.Flag('#') && !strings.Contains(core, ".") {
+				core += "."
+			}
+		}
+	case 'e', 'E':
+		prec := 6
+		if p, ok := f.Precision(); ok {
+			prec = p
+		}
+		core = formatScientific(dInit, prec, verb == 'E')
+		if prec == 0 && f.Flag('#') {
+			if eIdx := strings.IndexAny(core, "eE"); eIdx >= 0 {
+				core = core[:eIdx] + "." + core[eIdx:]
+			}
+		}
+	case 'g', 'G':
+		prec := -1
+		if p, ok := f.Precision(); ok {
+			prec = p
+		}
+		eVerb := 'e'
+		if verb == 'G' {
+			eVerb = 'E'
+		}
+		core = formatG(dInit, prec, eVerb, f.Flag('#'))
+	case 'b':
+		core = dInit.i.Text(2) + "p-" + strconv.Itoa(dInit.prec)
+	default:
+		fmt.Fprintf(f, "%%!%c(decimal.Decimal=%s)", verb, dInit.String())
+		return
+	}
+
+	// Apply sign flags for numeric verbs. %v, %s, %q do not receive a leading
+	// '+' or ' ' for non-negatives.
+	switch verb {
+	case 'd', 'f', 'F', 'e', 'E', 'g', 'G', 'b':
+		core = applySignFlags(core, f)
+	}
+
+	// Apply width/padding.
+	writePadded(f, core, verb)
+}
+
+// applySignFlags prepends a '+' or ' ' for non-negative numeric values when the
+// corresponding flag is set on f. It leaves already-signed strings untouched,
+// and leaves empty strings empty (matching fmt's handling of %.0d on zero).
+func applySignFlags(s string, f fmt.State) string {
+	if s == "" {
+		return s
+	}
+	if s[0] == '-' {
+		return s
+	}
+	if f.Flag('+') {
+		return "+" + s
+	}
+	if f.Flag(' ') {
+		return " " + s
+	}
+	return s
+}
+
+// writePadded writes s to f honoring the width, '-' (left-align), and '0'
+// (zero-pad) flags. Zero padding is only applied for numeric verbs when the
+// '-' flag is not set.
+func writePadded(f fmt.State, s string, verb rune) {
+	width, hasWidth := f.Width()
+	if !hasWidth || len(s) >= width {
+		fmt.Fprint(f, s)
+		return
+	}
+
+	pad := width - len(s)
+	leftAlign := f.Flag('-')
+	zeroPad := f.Flag('0') && !leftAlign && isNumericVerb(verb)
+	// Match fmt: for %d, an explicit precision suppresses the '0' flag
+	// (precision already performs digit-level zero padding).
+	if zeroPad && verb == 'd' {
+		if _, hasPrec := f.Precision(); hasPrec {
+			zeroPad = false
+		}
+	}
+
+	if leftAlign {
+		fmt.Fprint(f, s)
+		fmt.Fprint(f, strings.Repeat(" ", pad))
+		return
+	}
+
+	if zeroPad {
+		// Keep leading sign (if present) at the front when zero padding.
+		if len(s) > 0 && (s[0] == '-' || s[0] == '+' || s[0] == ' ') {
+			fmt.Fprint(f, string(s[0]))
+			fmt.Fprint(f, strings.Repeat("0", pad))
+			fmt.Fprint(f, s[1:])
+			return
+		}
+		fmt.Fprint(f, strings.Repeat("0", pad))
+		fmt.Fprint(f, s)
+		return
+	}
+
+	fmt.Fprint(f, strings.Repeat(" ", pad))
+	fmt.Fprint(f, s)
+}
+
+func isNumericVerb(verb rune) bool {
+	switch verb {
+	case 'd', 'f', 'F', 'e', 'E', 'g', 'G', 'b':
+		return true
+	}
+	return false
+}
+
+// formatScientific formats d in scientific notation with the given number of
+// fractional digits. The exponent is always emitted with at least two digits
+// and an explicit sign, matching fmt's %e style.
+func formatScientific(d Decimal, prec int, upper bool) string {
+	if prec < 0 {
+		prec = 0
+	}
+	if d.IsZero() {
+		mantissa := "0"
+		if prec > 0 {
+			mantissa += "." + strings.Repeat("0", prec)
+		}
+		return mantissa + expString(0, upper)
+	}
+
+	neg := d.IsNegative()
+	abs := d.Abs()
+
+	// Determine the exponent: the position of the most significant digit
+	// relative to the decimal point. Work from the canonical string which
+	// already strips trailing zeros but preserves leading structure.
+	digits, exp := significandAndExp(abs)
+
+	// Round digits to the desired precision (prec digits after the first).
+	digits, exp = roundSignificand(digits, exp, prec)
+
+	// Build mantissa "d.dddd".
+	var mantissa string
+	if prec == 0 {
+		mantissa = string(digits[0])
+	} else {
+		frac := digits[1:]
+		if len(frac) < prec {
+			frac += strings.Repeat("0", prec-len(frac))
+		}
+		mantissa = string(digits[0]) + "." + frac
+	}
+
+	sign := ""
+	if neg {
+		sign = "-"
+	}
+	return sign + mantissa + expString(exp, upper)
+}
+
+// significandAndExp returns the decimal digit string (without a decimal point
+// or sign) of abs and the exponent such that the value equals 0.d... * 10^(exp+1).
+// For convenience the returned digits start with the most significant digit
+// and exp is the base-10 exponent of that digit.
+func significandAndExp(abs Decimal) (digits string, exp int) {
+	// Use canonical form (trailing zeros removed) for computing the
+	// significand; this avoids spurious trailing zeros in the mantissa.
+	s := abs.StripTrailingZeros().String()
+
+	intPart, fracPart, hasDot := strings.Cut(s, ".")
+	if !hasDot {
+		// Pure integer.
+		digits = strings.TrimLeft(intPart, "0")
+		if digits == "" {
+			digits = "0"
+			exp = 0
+			return
+		}
+		exp = len(digits) - 1
+		return
+	}
+
+	if intPart != "0" {
+		digits = intPart + fracPart
+		// Strip leading zeros (shouldn't usually occur unless input was odd).
+		trimmed := strings.TrimLeft(digits, "0")
+		leadingZeros := len(digits) - len(trimmed)
+		if trimmed == "" {
+			digits = "0"
+			exp = 0
+			return
+		}
+		digits = trimmed
+		exp = len(intPart) - 1 - leadingZeros
+		return
+	}
+
+	// Integer part is "0"; count leading zeros in the fractional part.
+	trimmed := strings.TrimLeft(fracPart, "0")
+	if trimmed == "" {
+		digits = "0"
+		exp = 0
+		return
+	}
+	leadingZeros := len(fracPart) - len(trimmed)
+	digits = trimmed
+	exp = -(leadingZeros + 1)
+	return
+}
+
+// roundSignificand rounds digits to keep (prec+1) digits (one before the
+// decimal point, prec after) using RoundHalfEven. It returns the possibly
+// adjusted digit string and exponent.
+func roundSignificand(digits string, exp, prec int) (string, int) {
+	keep := prec + 1
+	if len(digits) <= keep {
+		return digits, exp
+	}
+
+	head := digits[:keep]
+	tail := digits[keep:]
+
+	// Determine rounding direction.
+	roundUp := false
+	first := tail[0]
+	switch {
+	case first < '5':
+		roundUp = false
+	case first > '5':
+		roundUp = true
+	default:
+		// first == '5'; check remaining tail for non-zero.
+		nonZero := false
+		for i := 1; i < len(tail); i++ {
+			if tail[i] != '0' {
+				nonZero = true
+				break
+			}
+		}
+		if nonZero {
+			roundUp = true
+		} else {
+			// Exactly halfway: round to even.
+			lastKept := head[len(head)-1]
+			if (lastKept-'0')%2 == 1 {
+				roundUp = true
+			}
+		}
+	}
+
+	if !roundUp {
+		return head, exp
+	}
+
+	// Propagate rounding carry through head.
+	bs := []byte(head)
+	for i := len(bs) - 1; i >= 0; i-- {
+		if bs[i] < '9' {
+			bs[i]++
+			return string(bs), exp
+		}
+		bs[i] = '0'
+	}
+	// Carry out past the most significant digit.
+	return "1" + string(bs[:len(bs)-1]) + strings.Repeat("0", 0), exp + 1
+}
+
+// expString returns the exponent suffix in the form "e±DD" (or "E±DD").
+func expString(exp int, upper bool) string {
+	marker := "e"
+	if upper {
+		marker = "E"
+	}
+	sign := "+"
+	if exp < 0 {
+		sign = "-"
+		exp = -exp
+	}
+	if exp < 10 {
+		return marker + sign + "0" + strconv.Itoa(exp)
+	}
+	return marker + sign + strconv.Itoa(exp)
+}
+
+// formatG renders d following Go's %g / %G conventions.
+//
+// For prec < 0 (default), the branch decision uses fmt's fixed eprec=6
+// threshold regardless of the value's digit count, and the fixed-point
+// branch emits the canonical (trailing-zero-stripped) string. The
+// scientific branch uses the value's minimal significand so integers like
+// 1000000 render as "1e+06" while 12345678 renders as "1.2345678e+07".
+//
+// For prec >= 0, precision is interpreted as the number of significant
+// digits. Scientific form is used when the decimal exponent is below -4 or
+// not less than the significant-digit count.
+func formatG(d Decimal, prec int, eVerb rune, hashFlag bool) string {
+	upper := eVerb == 'E'
+
+	if d.IsZero() {
+		if hashFlag {
+			n := prec
+			if n < 0 {
+				n = 6
+			}
+			if n == 0 {
+				n = 1
+			}
+			if n == 1 {
+				return "0."
+			}
+			return "0." + strings.Repeat("0", n-1)
+		}
+		return "0"
+	}
+
+	_, exp := significandAndExp(d.Abs())
+
+	// Default prec, no # flag: use the shortest-unique representation rules
+	// described on the function comment (eprec=6 for the branch decision).
+	if prec < 0 && !hashFlag {
+		const defaultEprec = 6
+		if exp < -4 || exp >= defaultEprec {
+			minSig := minimalSignificantDigits(d)
+			return stripGScientific(formatScientific(d, minSig-1, upper))
+		}
+		return d.String()
+	}
+
+	// Either precision was specified, or the # flag is set — use N
+	// significant digits, keeping trailing zeros when # is present.
+	var n int
+	switch {
+	case prec < 0:
+		n = 6
+	case prec == 0:
+		n = 1
+	default:
+		n = prec
+	}
+
+	if exp < -4 || exp >= n {
+		s := formatScientific(d, n-1, upper)
+		if hashFlag {
+			if n == 1 {
+				if eIdx := strings.IndexAny(s, "eE"); eIdx >= 0 && !strings.Contains(s[:eIdx], ".") {
+					s = s[:eIdx] + "." + s[eIdx:]
+				}
+			}
+			return s
+		}
+		return stripGScientific(s)
+	}
+
+	fractional := n - 1 - exp
+	if fractional < 0 {
+		fractional = 0
+	}
+	rescaled := d.Rescale(fractional, RoundHalfEven)
+	if hashFlag {
+		core := rescaled.StringWithTrailingZeros()
+		if fractional == 0 && !strings.Contains(core, ".") {
+			core += "."
+		}
+		return core
+	}
+	return rescaled.String()
+}
+
+// minimalSignificantDigits returns the number of leading digits in |d|
+// required to uniquely represent its value (trailing zeros in both the
+// integer and fractional parts are removed). For 1000000 the result is 1;
+// for 12345 it is 5; for 1.50 it is 2.
+func minimalSignificantDigits(d Decimal) int {
+	if d.IsZero() {
+		return 1
+	}
+	s := new(big.Int).Abs(d.i).Text(10)
+	s = strings.TrimRight(s, "0")
+	if s == "" {
+		return 1
+	}
+	return len(s)
+}
+
+// stripGScientific removes trailing zeros from the mantissa of a scientific
+// string produced by formatScientific so that %g's scientific branch follows
+// fmt's "no redundant zeros" rule (e.g. "1.200e+04" -> "1.2e+04").
+func stripGScientific(s string) string {
+	eIdx := strings.IndexAny(s, "eE")
+	if eIdx < 0 {
+		return s
+	}
+	mantissa := s[:eIdx]
+	suffix := s[eIdx:]
+	if !strings.Contains(mantissa, ".") {
+		return s
+	}
+	mantissa = strings.TrimRight(mantissa, "0")
+	mantissa = strings.TrimRight(mantissa, ".")
+	return mantissa + suffix
+}
+
+// FormatWithSeparators returns d formatted with the supplied thousands and
+// decimal separators. A thousands value of 0 disables grouping. A decimal
+// value of 0 is treated as a zero rune and falls back to '.' so the output
+// is always a syntactically valid decimal literal. The fractional part keeps
+// its full precision as produced by StringWithTrailingZeros.
+func (d Decimal) FormatWithSeparators(thousands, decimal rune) string {
+	if decimal == 0 {
+		decimal = '.'
+	}
+
+	base := d.StringWithTrailingZeros()
+
+	neg := false
+	if len(base) > 0 && base[0] == '-' {
+		neg = true
+		base = base[1:]
+	}
+
+	intPart, fracPart, hasDot := strings.Cut(base, ".")
+
+	var grouped string
+	if thousands == 0 || len(intPart) <= 3 {
+		grouped = intPart
+	} else {
+		var b strings.Builder
+		// Leading chunk may be 1, 2, or 3 digits.
+		first := len(intPart) % 3
+		if first == 0 {
+			first = 3
+		}
+		b.WriteString(intPart[:first])
+		for i := first; i < len(intPart); i += 3 {
+			b.WriteRune(thousands)
+			b.WriteString(intPart[i : i+3])
+		}
+		grouped = b.String()
+	}
+
+	var out strings.Builder
+	if neg {
+		out.WriteByte('-')
+	}
+	out.WriteString(grouped)
+	if hasDot {
+		out.WriteRune(decimal)
+		out.WriteString(fracPart)
+	}
+	return out.String()
 }

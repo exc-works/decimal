@@ -92,6 +92,8 @@ fmt.Println(b.String()) // 1.5
 - `decimal.NewFromUint64(uint64, precision)`
 - `decimal.NewFromString(string)`
 - `decimal.MustFromString(string)`
+- `decimal.NewFromDecimal(Decimal)` (deep copy)
+- `d.Clone()` (deep copy; useful after `NewFromBigInt` with an externally mutable `*big.Int`)
 
 ### String Parsing
 
@@ -126,9 +128,12 @@ If parsing results in zero, precision is normalized to `0`.
 - `QuoRem(Decimal)`
 - `Mod(Decimal)`
 - `Power(int64)`
-- `Sqrt() (Decimal, error)`
-- `ApproxRoot(int64) (Decimal, error)`
+- `Sqrt() (Decimal, error)` / `SqrtWithPrec(prec)`
+- `ApproxRoot(int64) (Decimal, error)` / `ApproxRootWithPrec(root, prec)`
 - `Log2() Decimal`
+- `Log10() (Decimal, error)` / `Log10WithPrec(prec)` (input must be > 0)
+- `Ln() (Decimal, error)` / `LnWithPrec(prec)` (input must be > 0)
+- `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
 
 ### Precision Utilities
 
@@ -180,12 +185,29 @@ If parsing results in zero, precision is normalized to `0`.
 
 - `String()` strips trailing zeros
 - `StringWithTrailingZeros()` keeps trailing zeros
+- `FormatWithSeparators(thousands, decimal rune)` for locale-aware display
+  (e.g., `12345.67` → `"12,345.67"` or European `"12.345,67"`)
+- `Format(fmt.State, verb rune)` implements `fmt.Formatter`, supporting
+  `%v`, `%s`, `%q`, `%d`, `%f`, `%e`, `%g`, `%b` with width/precision/flags
 
 ### JSON
 
 - `MarshalJSON()` encodes as a JSON string
 - `UnmarshalJSON()` accepts JSON string and (in some paths) raw JSON number text
 - uninitialized value marshals as `null`
+
+### XML
+
+- `MarshalXML()` / `UnmarshalXML()`
+- `MarshalXMLAttr()` / `UnmarshalXMLAttr()` for use in XML attributes
+- Uninitialized values encode as empty element/attribute
+
+### BSON
+
+- `MarshalBSONValue()` / `UnmarshalBSONValue()` via `go.mongodb.org/mongo-driver/v2/bson`
+- Encodes as BSON string; uninitialized encodes as BSON null
+- Decodes from String, Double, Int32, Int64, Decimal128, Null
+- `NullDecimal` also implements BSON value marshaling
 
 ### YAML
 
@@ -220,15 +242,29 @@ if err := c.ShouldBindQuery(&req); err != nil {
 
 - Use `decimal_required` to require Decimal field presence
 - Built-in `omitempty` can be used as usual
-- Decimal numeric comparison uses custom tags:
-  `decimal_eq`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`
+- Decimal numeric comparison tags:
+  `decimal_eq`, `decimal_ne`, `decimal_gt`, `decimal_gte`, `decimal_lt`, `decimal_lte`,
+  `decimal_between` (tilde-separated bounds, e.g. `decimal_between=1~100`;
+  `min` must be `<=` `max`)
+- Sign/zero tags (no param): `decimal_positive`, `decimal_negative`, `decimal_nonzero`
+- Precision tag: `decimal_max_precision=N` — max number of **decimal places
+  (scale)**, i.e. digits after the decimal point; **not** total significant
+  digits. `123.45` has scale `2` and passes `decimal_max_precision=2`.
 - Uses exact `Decimal` comparison (`Cmp`), without `Float64` conversion
 - Supports friendly error messages via translation helpers:
   `RegisterGoPlaygroundValidatorTranslations`,
   `RegisterGoPlaygroundValidatorTranslationsWithMessages`,
   and `TranslateGoPlaygroundValidationErrors`
-- Built-in translation locales: `en`, `zh`, `ja`, `fr`, `es`, `de`, `pt`
-- Register once before any validation
+- Built-in translation locales (13): `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`,
+  `de`, `pt`, `pt_BR`, `ru`, `ar`, `hi`
+- Register once before any validation; calling `RegisterGoPlaygroundValidator`
+  multiple times on the same `*validator.Validate` is idempotent — later calls
+  simply overwrite the previously registered handlers.
+
+> **Safety note.** Validator tag parameters must be compile-time constants.
+> Passing malformed parameters (non-numeric limits, unparseable decimal values,
+> `min > max` for `decimal_between`, negative `decimal_max_precision`) causes
+> panics at validation time — do not splice untrusted input into struct tags.
 
 Example:
 
@@ -306,6 +342,61 @@ Binary format:
 
 `Scan` supports: `nil`, `float32`, `float64`, `int64`, `string`, `[]byte`, and quoted/unquoted decimal text.
 
+### NullDecimal
+
+For nullable SQL columns, use `NullDecimal`:
+
+```go
+type Row struct {
+    Amount decimal.NullDecimal
+}
+
+var r Row
+_ = db.QueryRow("SELECT amount FROM t").Scan(&r.Amount)
+if r.Amount.Valid {
+    fmt.Println(r.Amount.Decimal.String())
+}
+```
+
+`NullDecimal` implements `sql.Scanner`, `driver.Valuer`, JSON/YAML/Text/BSON
+marshaling, and gin `UnmarshalParam`. `null`/empty input sets `Valid=false`.
+
+## Error Handling
+
+The package exposes sentinel errors so callers can switch on error category
+via `errors.Is`:
+
+- `ErrInvalidFormat` — malformed decimal string in `NewFromString`, `UnmarshalJSON`, etc.
+- `ErrInvalidPrecision` — negative precision
+- `ErrOverflow` — int64/uint64/float conversion overflow
+- `ErrDivideByZero` — division by zero
+- `ErrNegativeRoot` — even root of a negative value (`Sqrt`, `ApproxRoot`)
+- `ErrInvalidRoot` — non-positive `root` passed to `ApproxRoot`
+- `ErrInvalidLog` — logarithm of a non-positive value
+- `ErrRoundUnnecessary` — rounding required under `RoundUnnecessary` mode
+- `ErrUnmarshal` — binary/YAML/BSON/SQL unmarshal failures
+- `ErrInvalidArgument` — invalid setup argument (e.g. nil validator/translator)
+
+```go
+_, err := decimal.NewFromString("not a number")
+if errors.Is(err, decimal.ErrInvalidFormat) {
+    // handle
+}
+```
+
+## Concurrency
+
+- `Decimal` values are safe for concurrent read access by multiple goroutines
+  as long as no goroutine reassigns the variable.
+- Value-receiver methods (`Add`, `Sub`, `Mul`, `Cmp`, `String`, etc.) never
+  mutate the receiver and are safe to call concurrently.
+- Pointer-receiver methods (`Scan`, `UnmarshalJSON`, `UnmarshalYAML`,
+  `UnmarshalText`, `UnmarshalBinary`) mutate the receiver; external
+  synchronization is required when the same `*Decimal` may be accessed
+  concurrently.
+- Accessors like `BigInt()` / `BigRat()` return defensive copies.
+- Package-level constants (`Zero`, `One`, `Ten`, `Hundred`) are read-only.
+
 ## Notes and Pitfalls
 
 - negative precision panics in constructors/rescaling
@@ -338,3 +429,19 @@ Example:
 git tag -a v0.1.0 -m "release v0.1.0"
 git push origin v0.1.0
 ```
+
+### BSON support (optional)
+
+BSON support is compiled out by default so that downstream projects are not
+forced to pull in `go.mongodb.org/mongo-driver/v2`. To enable it, build with
+the `bson` build tag:
+
+```bash
+go build -tags bson ./...
+go test  -tags bson ./...
+```
+
+When the tag is set, `Decimal` and `NullDecimal` implement
+`bson.ValueMarshaler` / `bson.ValueUnmarshaler` (see `marshal_bson.go`).
+Without the tag, no BSON code is compiled and the MongoDB driver is not
+linked into the resulting binary, keeping the core library dependency-free.
