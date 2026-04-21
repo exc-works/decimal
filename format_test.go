@@ -233,10 +233,10 @@ func TestNewFromDecimalRoundTrip(t *testing.T) {
 
 func TestFormatWithSeparators(t *testing.T) {
 	tests := []struct {
-		value      string
-		thousands  rune
-		decimal    rune
-		want       string
+		value     string
+		thousands rune
+		decimal   rune
+		want      string
 	}{
 		{"12345.678", ',', '.', "12,345.678"},
 		{"1000000", ' ', '.', "1 000 000"},
