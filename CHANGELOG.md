@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-27
+
+### Added
+- `DecodeHook()` — mapstructure-compatible config decoder hook for viper,
+  koanf, confita, cleanenv, and any other mapstructure-based loader.
+  Decodes non-string scalar config values (`int` / `uint` / `float` /
+  `json.Number` / `[]byte` / `nil`) into `Decimal` and `NullDecimal`,
+  with `bool` and non-finite floats explicitly rejected via `ErrUnmarshal`.
+  Designed to compose with `mapstructure.TextUnmarshallerHookFunc()`,
+  which already covers the string path through `Decimal.UnmarshalText`.
+  The hook lives in the main module and pulls in **no** viper or
+  mapstructure dependencies; real end-to-end viper round-trip tests
+  (YAML / JSON / TOML, plus the `ComposeDecodeHookFunc` interop case)
+  live in an isolated sub-module at `integration/mapstructure/` so the
+  main module's dependency surface is unchanged.
+- New "Config Decoding (viper / mapstructure)" chapter in all 12
+  multilingual user guides (en/zh/zh-Hant/ja/ko/fr/es/de/pt-BR/ru/ar/hi),
+  with a byte-for-byte identical Go example across languages.
+
 ## [0.3.0] - 2026-04-21
 
 ### Added
