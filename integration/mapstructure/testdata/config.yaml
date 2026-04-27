@@ -1,0 +1,14 @@
+price: "9.99"
+quantity: 42
+ratio: 0.25
+discount: ~
+nested:
+  total: "100.5"
+  tax: 7
+items:
+  - "1.1"
+  - "2.2"
+  - 3
+fees:
+  setup: "5.5"
+  monthly: 10

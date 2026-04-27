@@ -321,6 +321,30 @@ if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
 }
 ```
 
+### viper / mapstructure
+
+`decimal.DecodeHook()` returns a mapstructure-compatible hook that converts
+non-string scalars (int / uint / float / `json.Number` / `[]byte` / `nil`)
+into `Decimal` and `NullDecimal`. Compose it with
+`mapstructure.TextUnmarshallerHookFunc()` to also cover the string path:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+`nil` source maps to `Valid=false` for `NullDecimal` and to an error wrapping
+`ErrUnmarshal` for `Decimal`. The hook lives in the main module and pulls in
+no viper / mapstructure dependencies.
+
 ### Binary / protobuf
 
 - `MarshalBinary()` / `UnmarshalBinary()`

@@ -6,6 +6,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/go-playground/validator/v10"
 
@@ -87,6 +88,22 @@ func ExampleErrInvalidLog() {
 	fmt.Println(errors.Is(err, decimal.ErrInvalidLog))
 	// Output:
 	// true
+}
+
+// DecodeHook returns a mapstructure-compatible hook that maps non-string
+// scalar config values (int / float / json.Number / []byte / nil) into
+// Decimal and NullDecimal targets. It composes with
+// mapstructure.TextUnmarshallerHookFunc() to cover the string path as well.
+//
+// This example invokes the hook directly via reflection so the decimal
+// package itself does not need to import viper or mapstructure.
+func ExampleDecodeHook() {
+	hook := decimal.DecodeHook()
+	to := reflect.TypeOf(decimal.Decimal{})
+
+	got, _ := hook(reflect.TypeOf(int64(0)), to, int64(42))
+	fmt.Println(got.(decimal.Decimal).String())
+	// Output: 42
 }
 
 func ExampleRegisterGoPlaygroundValidator() {
