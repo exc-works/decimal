@@ -217,7 +217,46 @@ type Req struct {
 الترجمات المدمجة: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
 `pt`, `pt_BR`, `ru`, `ar`, `hi`.
 
-## 12. معالجة الأخطاء
+## 12. فك ترميز الإعدادات (viper / mapstructure)
+
+تُرجِع `decimal.DecodeHook()` خطّافًا متوافقًا مع mapstructure يقوم بفك
+ترميز قيم الإعدادات (`string`, `int`, `uint`, `float`, `json.Number`,
+`[]byte`, `nil`) إلى `Decimal` و `NullDecimal`. صُمّم ليُستخدم مع
+`mapstructure.TextUnmarshallerHookFunc()` الذي يعالج بالفعل مسار السلسلة
+عبر `UnmarshalText`. الترتيب ليس صارمًا ── إذ يعالج `decimal.DecodeHook()`
+السلاسل بمفرده ── لكن الترتيب القياسي الموضّح أدناه يطابق مثال README:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+السلوك:
+
+- `Decimal` + `nil` / سلسلة فارغة / `[]byte` فارغ → خطأ يلفّ `ErrUnmarshal` (لا يمكن لـ `Decimal` تمثيل SQL NULL).
+- `NullDecimal` + `nil` / سلسلة فارغة / `[]byte` فارغ → قيمة صفرية (`Valid: false`).
+- يُعدّ مصدر `bool` **مرفوضًا** لكلا الهدفين، تجنّبًا لربط `false`/`true` ضمنيًا بـ `0`/`1`.
+- تُنتج أعداد الفاصلة العائمة `NaN` و `±Inf` خطأً يلفّ `ErrUnmarshal`.
+
+يقع الخطّاف في الوحدة الرئيسية ولا يجلب **أي** اعتماديات على viper أو
+mapstructure. يعمل أيضًا مع أيّ مفكّك ترميز آخر مبني على mapstructure
+(مثل koanf و confita و cleanenv).
+
+## 13. معالجة الأخطاء
 
 تكشف الحزمة عن أخطاء حارسة للمطابقة عبر `errors.Is`:
 
@@ -232,7 +271,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
 `ErrUnmarshal`.
 
-## 13. التزامن
+## 14. التزامن
 
 قيم `Decimal` آمنة للقراءة المتزامنة ما دام لا توجد غوروتين تُعيد تعيين
 المتغيّر. الدوال ذات المُستقبِل بالقيمة (`Add`, `Cmp`, `String`, ...) لا تُعدّل
@@ -240,7 +279,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 ...) فتُعدّله، وتتطلب مزامنة خارجية إذا تمّت مشاركة نفس `*Decimal` بين عدة
 غوروتينات.
 
-## 14. المزالق الشائعة
+## 15. المزالق الشائعة
 
 1. `MustFromString` يؤدي إلى panic؛ لا تستخدمه مع مدخلات غير موثوقة.
 2. الدقة السالبة تؤدي إلى panic.
@@ -248,7 +287,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. `Log2()` يؤدي إلى panic للقيم غير الموجبة؛ بينما `Log10`/`Ln` تُعيدان خطأً.
 5. `MarshalBinary()` يطبّع الأصفار اللاحقة.
 
-## 15. الأنماط الموصى بها
+## 16. الأنماط الموصى بها
 
 1. حلّل المدخلات الخارجية باستخدام `NewFromString` وتعامل مع الأخطاء.
 2. استخدم `QuoWithPrec` لأي مخرجات قسمة مرئية للمستخدم.

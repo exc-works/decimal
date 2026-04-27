@@ -209,7 +209,47 @@ Tags disponibles :
 
 Traductions intégrées : `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`, `pt`, `pt_BR`, `ru`, `ar`, `hi`.
 
-## 12. Gestion des erreurs
+## 12. Décodage de configuration (viper / mapstructure)
+
+`decimal.DecodeHook()` retourne un hook compatible mapstructure qui décode
+les valeurs de configuration (`string`, `int`, `uint`, `float`,
+`json.Number`, `[]byte`, `nil`) en `Decimal` et `NullDecimal`. Il est conçu
+pour être composé avec `mapstructure.TextUnmarshallerHookFunc()`, qui gère
+déjà le chemin chaîne via `UnmarshalText`. L'ordre n'est pas strict ──
+`decimal.DecodeHook()` gère les chaînes seul ── mais l'ordre canonique
+ci-dessous correspond à l'exemple du README :
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+Comportement :
+
+- `Decimal` + `nil` / chaîne vide / `[]byte` vide → erreur enveloppant `ErrUnmarshal` (`Decimal` ne peut pas représenter un SQL NULL).
+- `NullDecimal` + `nil` / chaîne vide / `[]byte` vide → valeur zéro (`Valid: false`).
+- Une source `bool` est **rejetée** pour les deux cibles, afin d'éviter de mapper silencieusement `false`/`true` sur `0`/`1`.
+- Les flottants `NaN` et `±Inf` produisent une erreur enveloppant `ErrUnmarshal`.
+
+Le hook réside dans le module principal et n'introduit **aucune**
+dépendance vers viper ou mapstructure. Il fonctionne aussi avec tout autre
+décodeur basé sur mapstructure (koanf, confita, cleanenv).
+
+## 13. Gestion des erreurs
 
 Le package expose des erreurs sentinelles compatibles avec `errors.Is` :
 
@@ -222,11 +262,11 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 
 Disponibles : `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`.
 
-## 13. Concurrence
+## 14. Concurrence
 
 Les valeurs `Decimal` sont sûres en accès concurrent en lecture tant qu'aucune goroutine ne réassigne la variable. Les méthodes à récepteur valeur (`Add`, `Cmp`, `String`, ...) ne modifient jamais le récepteur. Les méthodes à récepteur pointeur (`Scan`, `UnmarshalJSON`, ...) modifient le récepteur et exigent une synchronisation externe si le même `*Decimal` est partagé entre plusieurs goroutines.
 
-## 14. Pièges courants
+## 15. Pièges courants
 
 1. `MustFromString` panique ; ne l'utilisez pas sur des entrées non fiables.
 2. Une précision négative provoque une panique.
@@ -234,7 +274,7 @@ Les valeurs `Decimal` sont sûres en accès concurrent en lecture tant qu'aucune
 4. `Log2()` panique pour les valeurs non positives ; `Log10`/`Ln` renvoient une erreur.
 5. `MarshalBinary()` normalise les zéros de fin.
 
-## 15. Modèles recommandés
+## 16. Modèles recommandés
 
 1. Analysez les entrées externes avec `NewFromString` et gérez les erreurs.
 2. Utilisez `QuoWithPrec` pour toute sortie de division visible par l'utilisateur.

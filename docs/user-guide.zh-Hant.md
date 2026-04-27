@@ -216,7 +216,46 @@ type Req struct {
 內建翻譯語系：`en`、`zh`、`zh_Hant`、`ja`、`ko`、`fr`、`es`、`de`、
 `pt`、`pt_BR`、`ru`、`ar`、`hi`。
 
-## 12. 錯誤處理
+## 12. 設定解碼（viper / mapstructure）
+
+`decimal.DecodeHook()` 會回傳一個與 mapstructure 相容的 hook，用於將設定值
+（`string`、`int`、`uint`、`float`、`json.Number`、`[]byte`、`nil`）解碼為
+`Decimal` 與 `NullDecimal`。它被設計為與
+`mapstructure.TextUnmarshallerHookFunc()` 組合使用，後者已透過
+`UnmarshalText` 處理字串路徑。順序並非強制 ——
+`decimal.DecodeHook()` 也能單獨處理字串 —— 但下方所示的標準順序與
+README 範例一致：
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+行為：
+
+- `Decimal` + `nil` ／空字串／空 `[]byte` → 回傳包裝 `ErrUnmarshal` 的錯誤（`Decimal` 無法表示 SQL NULL）。
+- `NullDecimal` + `nil` ／空字串／空 `[]byte` → 零值（`Valid: false`）。
+- 對兩種目標型別，`bool` 來源都會被**拒絕**，避免將 `false`/`true` 靜默映射為 `0`/`1`。
+- `NaN` 與 `±Inf` 浮點數會回傳包裝 `ErrUnmarshal` 的錯誤。
+
+此 hook 位於主模組中，**不會**引入 viper 或 mapstructure 依賴。它同樣
+適用於其他基於 mapstructure 的解碼器（koanf、confita、cleanenv）。
+
+## 13. 錯誤處理
 
 本套件對外公開了可供 `errors.Is` 比對的哨兵錯誤：
 
@@ -231,14 +270,14 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidLog`、`ErrRoundUnnecessary`、
 `ErrUnmarshal`。
 
-## 13. 並行處理
+## 14. 並行處理
 
 只要沒有任何 goroutine 重新指派該變數，`Decimal` 的值即可安全地被並行讀取。
 值接收者方法（`Add`、`Cmp`、`String`、……）永遠不會改動接收者。
 指標接收者方法（`Scan`、`UnmarshalJSON`、……）會修改接收者，若同一個
 `*Decimal` 被多個 goroutine 共用，則需要外部同步機制。
 
-## 14. 常見陷阱
+## 15. 常見陷阱
 
 1. `MustFromString` 會 panic；不要用在不可信輸入上。
 2. 負的精度會 panic。
@@ -246,7 +285,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. 對非正值呼叫 `Log2()` 會 panic；`Log10`／`Ln` 則會回傳錯誤。
 5. `MarshalBinary()` 會正規化尾隨零。
 
-## 15. 建議做法
+## 16. 建議做法
 
 1. 使用 `NewFromString` 解析外部輸入並處理錯誤。
 2. 對任何使用者可見的除法輸出使用 `QuoWithPrec`。

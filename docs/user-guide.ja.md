@@ -211,7 +211,47 @@ type Req struct {
 組み込みの翻訳: `en`、`zh`、`zh_Hant`、`ja`、`ko`、`fr`、`es`、`de`、
 `pt`、`pt_BR`、`ru`、`ar`、`hi`。
 
-## 12. エラーハンドリング
+## 12. 設定デコード（viper / mapstructure）
+
+`decimal.DecodeHook()` は mapstructure 互換のフックを返し、設定値
+（`string`、`int`、`uint`、`float`、`json.Number`、`[]byte`、`nil`）を
+`Decimal` および `NullDecimal` にデコードします。これは
+`mapstructure.TextUnmarshallerHookFunc()` と組み合わせて使うことを想定して
+おり、後者は `UnmarshalText` を介して文字列パスを処理します。順序は厳密
+ではありません ── `decimal.DecodeHook()` は単独でも文字列を扱えます ──
+が、以下に示す標準的な順序は README の例と一致しています。
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+挙動:
+
+- `Decimal` + `nil` ／空文字列／空 `[]byte` → `ErrUnmarshal` をラップしたエラーを返します（`Decimal` は SQL NULL を表現できません）。
+- `NullDecimal` + `nil` ／空文字列／空 `[]byte` → ゼロ値（`Valid: false`）。
+- 両方のターゲットで `bool` ソースは**拒否**され、`false`/`true` が暗黙的に `0`/`1` にマッピングされるのを防ぎます。
+- `NaN` および `±Inf` の浮動小数点値は `ErrUnmarshal` をラップしたエラーになります。
+
+このフックはメインモジュールに置かれており、viper や mapstructure の依存
+を**一切**取り込みません。他の mapstructure ベースのデコーダ（koanf、
+confita、cleanenv）でも同様に動作します。
+
+## 13. エラーハンドリング
 
 本パッケージは `errors.Is` によるマッチング用にセンチネルエラーを公開しています。
 
@@ -226,11 +266,11 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidLog`、`ErrRoundUnnecessary`、
 `ErrUnmarshal`。
 
-## 13. 並行性
+## 14. 並行性
 
 `Decimal` の値は、どのゴルーチンもその変数を再代入しない限り、並行的な読み取りアクセスに対して安全です。値レシーバのメソッド（`Add`、`Cmp`、`String`、...）はレシーバを変更することはありません。ポインタレシーバのメソッド（`Scan`、`UnmarshalJSON`、...）は値を変更するため、同じ `*Decimal` を複数のゴルーチンで共有する場合は、外部での同期が必要です。
 
-## 14. よくある落とし穴
+## 15. よくある落とし穴
 
 1. `MustFromString` は panic するため、信頼できない入力には使用しないでください。
 2. 負の精度は panic します。
@@ -238,7 +278,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. `Log2()` は 0 以下の値で panic します。`Log10` / `Ln` はエラーを返します。
 5. `MarshalBinary()` は末尾のゼロを正規化します。
 
-## 15. 推奨パターン
+## 16. 推奨パターン
 
 1. 外部入力は `NewFromString` で解析し、エラーを処理する。
 2. ユーザーに表示する除算結果には `QuoWithPrec` を使用する。

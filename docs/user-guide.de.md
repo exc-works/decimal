@@ -218,7 +218,48 @@ Verfügbare Tags:
 Integrierte Übersetzungen: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
 `pt`, `pt_BR`, `ru`, `ar`, `hi`.
 
-## 12. Fehlerbehandlung
+## 12. Konfigurations-Decoding (viper / mapstructure)
+
+`decimal.DecodeHook()` gibt einen mapstructure-kompatiblen Hook zurück, der
+Konfigurationswerte (`string`, `int`, `uint`, `float`, `json.Number`,
+`[]byte`, `nil`) in `Decimal` und `NullDecimal` decodiert. Er ist darauf
+ausgelegt, mit `mapstructure.TextUnmarshallerHookFunc()` kombiniert zu
+werden, der den String-Pfad bereits über `UnmarshalText` abdeckt. Die
+Reihenfolge ist nicht zwingend ── `decimal.DecodeHook()` verarbeitet
+Strings auch eigenständig ──, doch die unten gezeigte kanonische
+Reihenfolge entspricht dem README-Beispiel:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+Verhalten:
+
+- `Decimal` + `nil` / leerer String / leeres `[]byte` → Fehler, der `ErrUnmarshal` umschließt (`Decimal` kann SQL NULL nicht repräsentieren).
+- `NullDecimal` + `nil` / leerer String / leeres `[]byte` → Nullwert (`Valid: false`).
+- Eine `bool`-Quelle wird für beide Ziele **abgelehnt**, um zu vermeiden, dass `false`/`true` stillschweigend auf `0`/`1` abgebildet wird.
+- `NaN`- und `±Inf`-Floats führen zu einem Fehler, der `ErrUnmarshal` umschließt.
+
+Der Hook befindet sich im Hauptmodul und zieht **keine** viper- oder
+mapstructure-Abhängigkeiten nach. Er funktioniert auch mit jedem anderen
+mapstructure-basierten Decoder (koanf, confita, cleanenv).
+
+## 13. Fehlerbehandlung
 
 Das Paket stellt Sentinel-Fehler für den Abgleich mit `errors.Is` bereit:
 
@@ -233,7 +274,7 @@ Verfügbar: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
 `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
 `ErrUnmarshal`.
 
-## 13. Nebenläufigkeit
+## 14. Nebenläufigkeit
 
 `Decimal`-Werte sind für gleichzeitigen Lesezugriff sicher, solange keine
 Goroutine die Variable neu zuweist. Methoden mit Wert-Empfänger (`Add`, `Cmp`,
@@ -242,7 +283,7 @@ Goroutine die Variable neu zuweist. Methoden mit Wert-Empfänger (`Add`, `Cmp`,
 externe Synchronisation, wenn derselbe `*Decimal` von mehreren Goroutinen
 gemeinsam genutzt wird.
 
-## 14. Häufige Fallstricke
+## 15. Häufige Fallstricke
 
 1. `MustFromString` löst einen Panic aus; verwenden Sie es nicht für nicht vertrauenswürdige Eingaben.
 2. Negative Präzision löst einen Panic aus.
@@ -250,7 +291,7 @@ gemeinsam genutzt wird.
 4. `Log2()` löst bei nicht-positiven Werten einen Panic aus; `Log10`/`Ln` geben stattdessen einen Fehler zurück.
 5. `MarshalBinary()` normalisiert nachgestellte Nullen.
 
-## 15. Empfohlene Muster
+## 16. Empfohlene Muster
 
 1. Parsen Sie externe Eingaben mit `NewFromString` und behandeln Sie Fehler.
 2. Verwenden Sie `QuoWithPrec` für jede benutzersichtbare Divisionsausgabe.

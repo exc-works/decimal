@@ -225,7 +225,46 @@ type Req struct {
 信任的输入拼接进 struct tag。`RegisterGoPlaygroundValidator` 是幂等的：
 对同一个 `*validator.Validate` 重复调用只会覆盖已注册的处理函数，不会报错。
 
-## 12. 错误处理
+## 12. 配置解码（viper / mapstructure）
+
+`decimal.DecodeHook()` 返回一个与 mapstructure 兼容的 hook，用于将配置值
+（`string`、`int`、`uint`、`float`、`json.Number`、`[]byte`、`nil`）解码为
+`Decimal` 与 `NullDecimal`。它被设计为与
+`mapstructure.TextUnmarshallerHookFunc()` 组合使用，后者已经通过
+`UnmarshalText` 处理了字符串路径。顺序并非强制 ——
+`decimal.DecodeHook()` 单独也能处理字符串 —— 但下面展示的标准顺序与
+README 示例一致：
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+行为：
+
+- `Decimal` + `nil` / 空字符串 / 空 `[]byte` → 返回包装 `ErrUnmarshal` 的错误（`Decimal` 无法表示 SQL NULL）。
+- `NullDecimal` + `nil` / 空字符串 / 空 `[]byte` → 零值（`Valid: false`）。
+- 对两种目标类型，`bool` 来源都会被**拒绝**，避免将 `false`/`true` 静默映射为 `0`/`1`。
+- `NaN` 与 `±Inf` 浮点数会返回包装 `ErrUnmarshal` 的错误。
+
+该 hook 位于主模块中，**不会**引入 viper 或 mapstructure 依赖。它同样适用
+于其他基于 mapstructure 的解码器（koanf、confita、cleanenv）。
+
+## 13. 错误处理
 
 包内导出了若干哨兵错误（sentinel error），可用 `errors.Is` 匹配：
 
@@ -240,14 +279,14 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidLog`、`ErrRoundUnnecessary`、
 `ErrUnmarshal`。
 
-## 13. 并发
+## 14. 并发
 
 只要没有任何 goroutine 重新赋值，`Decimal` 值可以被多个 goroutine 安全地并发读取。
 值接收者方法（`Add`、`Cmp`、`String` 等）不会修改接收者；
 而指针接收者方法（`Scan`、`UnmarshalJSON` 等）会修改接收者本身，
 如果多个 goroutine 共享同一个 `*Decimal`，需要由调用方自行同步。
 
-## 14. 常见坑点
+## 15. 常见坑点
 
 1. `MustFromString` 解析失败会 panic，不要用于不可信输入。
 2. 负精度会 panic。
@@ -255,7 +294,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. `Log2()` 对非正数会 panic；而 `Log10` / `Ln` 会返回错误。
 5. `MarshalBinary()` 会规范化尾随零。
 
-## 15. 推荐实践
+## 16. 推荐实践
 
 1. 外部输入统一使用 `NewFromString` 并处理错误。
 2. 用户可见的除法结果统一使用 `QuoWithPrec`。

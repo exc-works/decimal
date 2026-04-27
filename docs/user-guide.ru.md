@@ -221,7 +221,48 @@ type Req struct {
 Встроенные переводы: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
 `pt`, `pt_BR`, `ru`, `ar`, `hi`.
 
-## 12. Обработка ошибок
+## 12. Декодирование конфигурации (viper / mapstructure)
+
+`decimal.DecodeHook()` возвращает совместимый с mapstructure хук, который
+декодирует значения конфигурации (`string`, `int`, `uint`, `float`,
+`json.Number`, `[]byte`, `nil`) в `Decimal` и `NullDecimal`. Он
+спроектирован так, чтобы компоноваться с
+`mapstructure.TextUnmarshallerHookFunc()`, который уже обрабатывает путь
+строки через `UnmarshalText`. Порядок не строгий ──
+`decimal.DecodeHook()` обрабатывает строки и самостоятельно ── но
+канонический порядок, показанный ниже, соответствует примеру из README:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+Поведение:
+
+- `Decimal` + `nil` / пустая строка / пустой `[]byte` → ошибка, оборачивающая `ErrUnmarshal` (`Decimal` не может представлять SQL NULL).
+- `NullDecimal` + `nil` / пустая строка / пустой `[]byte` → нулевое значение (`Valid: false`).
+- Источник `bool` **отклоняется** для обеих целей, чтобы избежать молчаливого отображения `false`/`true` в `0`/`1`.
+- Числа с плавающей точкой `NaN` и `±Inf` приводят к ошибке, оборачивающей `ErrUnmarshal`.
+
+Хук размещён в основном модуле и **не** тянет за собой зависимости от
+viper или mapstructure. Он также работает с любым другим декодером на
+основе mapstructure (koanf, confita, cleanenv).
+
+## 13. Обработка ошибок
 
 Пакет предоставляет сигнальные ошибки для сопоставления через
 `errors.Is`:
@@ -237,7 +278,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
 `ErrUnmarshal`.
 
-## 13. Конкурентность
+## 14. Конкурентность
 
 Значения `Decimal` безопасны для одновременного чтения, пока ни одна
 горутина не переприсваивает переменную. Методы с получателем по
@@ -246,7 +287,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 изменяют его и требуют внешней синхронизации, если один и тот же
 `*Decimal` используется несколькими горутинами.
 
-## 14. Распространённые ошибки
+## 15. Распространённые ошибки
 
 1. `MustFromString` вызывает panic; не используйте его для недоверенного ввода.
 2. Отрицательная точность вызывает panic.
@@ -255,7 +296,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
    возвращают ошибку.
 5. `MarshalBinary()` нормализует конечные нули.
 
-## 15. Рекомендуемые шаблоны
+## 16. Рекомендуемые шаблоны
 
 1. Разбирайте внешний ввод через `NewFromString` и обрабатывайте ошибки.
 2. Используйте `QuoWithPrec` для любого пользовательского вывода

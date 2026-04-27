@@ -211,7 +211,47 @@ type Req struct {
 기본 제공 번역: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`,
 `pt`, `pt_BR`, `ru`, `ar`, `hi`.
 
-## 12. 오류 처리
+## 12. 설정 디코딩 (viper / mapstructure)
+
+`decimal.DecodeHook()`는 mapstructure 호환 훅을 반환하여 설정 값
+(`string`, `int`, `uint`, `float`, `json.Number`, `[]byte`, `nil`)을
+`Decimal`과 `NullDecimal`로 디코딩합니다. 이는
+`mapstructure.TextUnmarshallerHookFunc()`와 함께 조합하여 사용하도록
+설계되었으며, 후자는 이미 `UnmarshalText`를 통해 문자열 경로를 처리합니다.
+순서는 엄격하지 않으며 ── `decimal.DecodeHook()`는 단독으로도 문자열을
+처리합니다 ── 아래에 표시된 표준 순서는 README 예제와 일치합니다:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+동작:
+
+- `Decimal` + `nil` / 빈 문자열 / 빈 `[]byte` → `ErrUnmarshal`을 래핑한 오류 반환 (`Decimal`은 SQL NULL을 표현할 수 없음).
+- `NullDecimal` + `nil` / 빈 문자열 / 빈 `[]byte` → 영값(`Valid: false`).
+- 두 대상 타입 모두에 대해 `bool` 소스는 **거부**되어, `false`/`true`가 조용히 `0`/`1`로 매핑되는 것을 방지합니다.
+- `NaN` 및 `±Inf` 부동소수점 값은 `ErrUnmarshal`을 래핑한 오류를 반환합니다.
+
+이 훅은 메인 모듈에 위치하며 viper나 mapstructure 의존성을 **전혀**
+가져오지 않습니다. 다른 mapstructure 기반 디코더(koanf, confita,
+cleanenv)와도 잘 작동합니다.
+
+## 13. 오류 처리
 
 이 패키지는 `errors.Is` 매칭을 위한 센티넬 오류를 공개합니다:
 
@@ -226,11 +266,11 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
 `ErrUnmarshal`.
 
-## 13. 동시성
+## 14. 동시성
 
 `Decimal` 값은 어떤 고루틴도 변수를 재할당하지 않는 한 동시 읽기 접근에 안전합니다. 값 수신자 메서드(`Add`, `Cmp`, `String`, ...)는 수신자를 절대 변경하지 않습니다. 포인터 수신자 메서드(`Scan`, `UnmarshalJSON`, ...)는 수신자를 변경하므로 동일한 `*Decimal`이 여러 고루틴에서 공유될 경우 외부 동기화가 필요합니다.
 
-## 14. 흔한 함정
+## 15. 흔한 함정
 
 1. `MustFromString`은 panic을 발생시키므로, 신뢰할 수 없는 입력에 사용하지 마세요.
 2. 음수 정밀도(`precision`)는 panic을 발생시킵니다.
@@ -238,7 +278,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. `Log2()`는 0 이하 값에서 panic을 발생시키며, `Log10`/`Ln`은 오류를 반환합니다.
 5. `MarshalBinary()`는 후행 0을 정규화합니다.
 
-## 15. 권장 패턴
+## 16. 권장 패턴
 
 1. 외부 입력은 `NewFromString`으로 파싱하고 오류를 처리하세요.
 2. 사용자에게 표시되는 나눗셈 결과에는 `QuoWithPrec`를 사용하세요.

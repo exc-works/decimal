@@ -210,7 +210,48 @@ type Req struct {
 
 अंतर्निहित अनुवाद: `en`, `zh`, `zh_Hant`, `ja`, `ko`, `fr`, `es`, `de`, `pt`, `pt_BR`, `ru`, `ar`, `hi`।
 
-## 12. त्रुटि प्रबंधन
+## 12. कॉन्फ़िग डिकोडिंग (viper / mapstructure)
+
+`decimal.DecodeHook()` एक mapstructure-संगत हुक लौटाता है जो कॉन्फ़िग
+मानों (`string`, `int`, `uint`, `float`, `json.Number`, `[]byte`, `nil`)
+को `Decimal` और `NullDecimal` में डिकोड करता है। इसे
+`mapstructure.TextUnmarshallerHookFunc()` के साथ कंपोज़ करने के लिए
+डिज़ाइन किया गया है, जो पहले से ही `UnmarshalText` के माध्यम से स्ट्रिंग
+पथ को संभालता है। क्रम सख्त नहीं है ── `decimal.DecodeHook()` स्ट्रिंग्स
+को स्वतंत्र रूप से भी संभाल लेता है ── लेकिन नीचे दिखाया गया मानक क्रम
+README उदाहरण से मेल खाता है:
+
+```go
+import (
+	"github.com/exc-works/decimal"
+	"github.com/go-viper/mapstructure/v2"
+	"github.com/spf13/viper"
+)
+
+type Config struct {
+	Price    decimal.Decimal     `mapstructure:"price"`
+	Discount decimal.NullDecimal `mapstructure:"discount"`
+}
+
+var cfg Config
+err := viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.TextUnmarshallerHookFunc(),
+	decimal.DecodeHook(),
+)))
+```
+
+व्यवहार:
+
+- `Decimal` + `nil` / खाली स्ट्रिंग / खाली `[]byte` → `ErrUnmarshal` को रैप करने वाली त्रुटि (`Decimal` SQL NULL का प्रतिनिधित्व नहीं कर सकता)।
+- `NullDecimal` + `nil` / खाली स्ट्रिंग / खाली `[]byte` → शून्य मान (`Valid: false`)।
+- दोनों लक्ष्य प्रकारों के लिए `bool` स्रोत **अस्वीकार** किया जाता है, ताकि `false`/`true` को मौन रूप से `0`/`1` पर मैप होने से बचाया जा सके।
+- `NaN` और `±Inf` फ़्लोट `ErrUnmarshal` को रैप करने वाली त्रुटि देते हैं।
+
+यह हुक मुख्य मॉड्यूल में मौजूद है और viper या mapstructure की कोई भी
+निर्भरता नहीं खींचता। यह किसी भी अन्य mapstructure-आधारित डिकोडर
+(koanf, confita, cleanenv) के साथ भी काम करता है।
+
+## 13. त्रुटि प्रबंधन
 
 यह पैकेज `errors.Is` मिलान के लिए सेंटिनल त्रुटियाँ प्रदान करता है:
 
@@ -223,11 +264,11 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 
 उपलब्ध: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`।
 
-## 13. समवर्तीता
+## 14. समवर्तीता
 
 `Decimal` मान समवर्ती पढ़ने के लिए सुरक्षित हैं, बशर्ते कोई goroutine वेरिएबल को पुनः असाइन न करे। वैल्यू-रिसीवर विधियाँ (`Add`, `Cmp`, `String`, ...) कभी रिसीवर को परिवर्तित नहीं करतीं। पॉइंटर-रिसीवर विधियाँ (`Scan`, `UnmarshalJSON`, ...) परिवर्तन करती हैं और यदि एक ही `*Decimal` कई goroutines के बीच साझा किया गया है तो बाहरी सिंक्रोनाइज़ेशन आवश्यक है।
 
-## 14. सामान्य त्रुटियाँ
+## 15. सामान्य त्रुटियाँ
 
 1. `MustFromString` पैनिक करता है; इसे अविश्वसनीय इनपुट पर उपयोग न करें।
 2. ऋणात्मक परिशुद्धता पैनिक कराती है।
@@ -235,7 +276,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 4. `Log2()` गैर-धनात्मक मानों के लिए पैनिक करता है; `Log10`/`Ln` त्रुटि लौटाते हैं।
 5. `MarshalBinary()` अनुगामी शून्यों को सामान्यीकृत करता है।
 
-## 15. अनुशंसित पैटर्न
+## 16. अनुशंसित पैटर्न
 
 1. बाहरी इनपुट को `NewFromString` से पार्स करें और त्रुटियों को संभालें।
 2. उपयोगकर्ता को दिखने वाले किसी भी भागफल आउटपुट के लिए `QuoWithPrec` का उपयोग करें।
