@@ -7,6 +7,56 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- `MostSignificantBit(*big.Int)` no longer mutates its argument. Previously
+  the binary-search loop right-shifted into the input via `x.Rsh(x, ...)`,
+  silently corrupting the caller's `*big.Int`. The implementation is now a
+  one-liner backed by `(*big.Int).BitLen`.
+- `Quo` now panics on an invalid `RoundingMode` even when the division is
+  exact, matching its godoc. Previously the exact-division fast path
+  returned without validating the mode.
+
+### Changed
+- **Behavior, edge cases only**: `Quo`'s halfway-rounding decision is now
+  driven by the exact remainder versus the divisor, rather than the prior
+  approach of scaling the numerator by `10^(2·maxPrec)` and rounding the
+  oversized intermediate. Results are unchanged for the vast majority of
+  inputs; for inputs whose true tail straddled the halfway point in a
+  digit beyond what the prior scaling preserved, the rounded last digit
+  may differ by one ulp (the new result is the mathematically correct one).
+
+### Security
+- `NewFromString` rejects parsed precisions whose magnitude exceeds
+  `1<<17` (e.g. `"1e2000000000"`), preventing pathological inputs from
+  triggering a `10^|precision|` `big.Int` allocation. The same cap is
+  applied to `UnmarshalBinary`, which previously stored an attacker-supplied
+  `uint32` precision verbatim and only failed lazily on first arithmetic.
+
+### Performance
+- `Quo` now performs a single `Mul` plus `QuoRem` (using the exact integer
+  remainder for rounding) instead of two `Mul`s, a `Quo`, and a follow-up
+  rounding division. Microbenchmarks show ~30–60% latency and ~30–70%
+  allocation reductions across the `Quo` matrix; downstream `Log2` /
+  `Ln` / `Log10` / `Exp` / `Sqrt` benefit transitively.
+- `BigRat`, `Float64`, and `Float32` no longer wrap the cached precision
+  multiplier in a redundant `new(big.Int).Set(...)`. `big.Rat.SetFrac`
+  already copies its inputs internally, so the wrapper produced one extra
+  heap allocation per call with no safety benefit.
+- `Ln` / `LnWithPrec` parse the `ln2` constant once at package init
+  (`ln2Decimal`) instead of re-parsing the literal on every call.
+
+### Internal
+- New shared helper `applyDivisionRounding(quo, rem, divisor, mode)` in
+  `round.go` consolidates the integer-division rounding logic; both `Quo`
+  and `NewFromBigRatWithPrec` now route through it. Rounding for `Quo`
+  also correctly handles a negative divisor.
+- New `validateRoundingMode(mode)` helper in `round.go` enforces the
+  invalid-mode panic from public entry points whose fast paths bypass
+  `applyDivisionRounding`.
+- Minor cleanups: `big.NewInt(0).SetInt64(root)` → `big.NewInt(root)` in
+  `ApproxRootWithPrec`; dead `strings.Repeat("0", 0)` removed from
+  `roundSignificand`; unused `twoInt` package var removed.
+
 ## [0.4.0] - 2026-04-27
 
 ### Added
