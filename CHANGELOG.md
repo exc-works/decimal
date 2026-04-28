@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-28
+
 ### Fixed
 - `MostSignificantBit(*big.Int)` no longer mutates its argument. Previously
   the binary-search loop right-shifted into the input via `x.Rsh(x, ...)`,
@@ -162,7 +164,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - JSON/YAML/Text/Binary/SQL serialization support.
 - Extensive unit tests, examples, and benchmarks.
 
-[Unreleased]: https://github.com/exc-works/decimal/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/exc-works/decimal/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/exc-works/decimal/releases/tag/v0.5.0
+[0.4.0]: https://github.com/exc-works/decimal/releases/tag/v0.4.0
 [0.3.0]: https://github.com/exc-works/decimal/releases/tag/v0.3.0
 [0.2.0]: https://github.com/exc-works/decimal/releases/tag/v0.2.0
 [0.1.0]: https://github.com/exc-works/decimal/releases/tag/v0.1.0
