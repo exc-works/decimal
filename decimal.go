@@ -19,7 +19,6 @@ const (
 var (
 	zeroInt = big.NewInt(0)
 	oneInt  = big.NewInt(1)
-	twoInt  = big.NewInt(2)
 	fiveInt = big.NewInt(5)
 	tenInt  = big.NewInt(10)
 )
@@ -149,53 +148,7 @@ func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) 
 	scaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
 	quotient, remainder := new(big.Int).QuoRem(scaled, den, new(big.Int))
 	if remainder.Sign() != 0 {
-		// Decide whether to adjust quotient based on the exact remainder,
-		// so digits beyond prec+1 are also accounted for.
-		awayFromZero := func() {
-			if remainder.Sign() > 0 {
-				quotient.Add(quotient, oneInt)
-			} else {
-				quotient.Sub(quotient, oneInt)
-			}
-		}
-
-		switch roundingMode {
-		case RoundDown:
-			// already truncated toward zero
-		case RoundUp:
-			awayFromZero()
-		case RoundCeiling:
-			if remainder.Sign() > 0 {
-				quotient.Add(quotient, oneInt)
-			}
-		case RoundHalfUp, RoundHalfDown, RoundHalfEven:
-			twiceAbsRem := new(big.Int).Abs(remainder)
-			twiceAbsRem.Mul(twiceAbsRem, twoInt)
-			cmp := twiceAbsRem.Cmp(den)
-
-			switch roundingMode {
-			case RoundHalfUp:
-				if cmp >= 0 {
-					awayFromZero()
-				}
-			case RoundHalfDown:
-				if cmp > 0 {
-					awayFromZero()
-				}
-			case RoundHalfEven:
-				if cmp > 0 {
-					awayFromZero()
-				} else if cmp == 0 {
-					if new(big.Int).Abs(quotient).Bit(0) != 0 {
-						awayFromZero()
-					}
-				}
-			}
-		case RoundUnnecessary:
-			panic("inexact conversion")
-		default:
-			panic("invalid rounding mode")
-		}
+		applyDivisionRounding(quotient, remainder, den, roundingMode)
 	}
 
 	return Decimal{
@@ -479,30 +432,26 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
-	// To adapt to the situation where the precision of both numbers is 0,
-	// the precision of both numbers is increased by 1, and the final calculation
-	// result is rescaled to 0.
-	if d.prec == 0 && d2.prec == 0 {
-		d1, d2 := d.RescaleDown(1), d2.RescaleDown(1)
-		// multiply precision twice
-		d1Twice := new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(1))
-		d1Twice = new(big.Int).Mul(d1Twice, safeGetPrecisionMultiplier(1))
-
-		return Decimal{
-			i:    new(big.Int).Quo(d1Twice, d2.i),
-			prec: 1 * 2,
-		}.Rescale(0, roundingMode)
+	if d2.i.Sign() == 0 {
+		panic("division by zero")
 	}
 
 	d1, d2, maxPrec := rescalePair(d, d2)
-	// multiply precision twice
-	d1Twice := new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(maxPrec))
-	d1Twice = new(big.Int).Mul(d1Twice, safeGetPrecisionMultiplier(maxPrec))
 
-	return Decimal{
-		i:    new(big.Int).Quo(d1Twice, d2.i),
-		prec: maxPrec,
-	}.round(roundingMode)
+	// Scale the numerator so the truncated quotient is already at maxPrec
+	// precision; the remainder carries the exact information needed to make
+	// the rounding decision.
+	num := d1.i
+	if maxPrec > 0 {
+		num = new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(maxPrec))
+	}
+
+	quo, rem := new(big.Int).QuoRem(num, d2.i, new(big.Int))
+	if rem.Sign() != 0 {
+		applyDivisionRounding(quo, rem, d2.i, roundingMode)
+	}
+
+	return Decimal{i: quo, prec: maxPrec}
 }
 
 // QuoDown returns d / d2 rounded down.
