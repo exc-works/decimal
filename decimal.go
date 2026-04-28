@@ -430,6 +430,7 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 // Quo returns d / d2 rounded according to roundingMode.
 // It panics if d2 is zero or roundingMode is invalid.
 func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
+	validateRoundingMode(roundingMode)
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
 	if d2.i.Sign() == 0 {

@@ -182,6 +182,21 @@ func (d Decimal) roundUnnecessary() Decimal {
 	}
 }
 
+// validateRoundingMode panics when mode is not one of the documented constants.
+// Callers that have a fast path bypassing applyDivisionRounding (e.g. Quo on
+// exact division) must invoke this so the public contract — "panics on invalid
+// rounding mode" — is honored regardless of input shape.
+func validateRoundingMode(mode RoundingMode) {
+	switch mode {
+	case RoundDown, RoundUp, RoundCeiling,
+		RoundHalfUp, RoundHalfDown, RoundHalfEven,
+		RoundUnnecessary:
+		return
+	default:
+		panic("invalid rounding mode")
+	}
+}
+
 // applyDivisionRounding adjusts quo (the truncated-toward-zero quotient of an
 // integer division) in place, given the corresponding non-zero remainder rem
 // and the divisor. divisor may be negative; only its magnitude is used for

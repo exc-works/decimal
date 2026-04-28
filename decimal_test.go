@@ -1293,6 +1293,29 @@ func TestDecimalQuoRemPanicsOnZeroDivisor(t *testing.T) {
 	})
 }
 
+func TestDecimalQuoPanicsOnInvalidRoundingMode(t *testing.T) {
+	// Exact division must still validate the rounding mode so that the godoc
+	// contract ("panics if … roundingMode is invalid") holds even when the
+	// remainder is zero.
+	t.Run("exact division", func(t *testing.T) {
+		assertPanic(t, func() {
+			_ = New(4).Quo(New(2), RoundingMode(99))
+		})
+	})
+
+	t.Run("inexact division", func(t *testing.T) {
+		assertPanic(t, func() {
+			_ = New(5).Quo(New(2), RoundingMode(99))
+		})
+	})
+}
+
+func TestDecimalQuoPanicsOnZeroDivisor(t *testing.T) {
+	assertPanic(t, func() {
+		_ = New(1).Quo(Zero, RoundDown)
+	})
+}
+
 func TestDecimalMod(t *testing.T) {
 	tests := []struct {
 		name  string
