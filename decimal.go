@@ -14,6 +14,13 @@ const (
 
 	// max number of iterations in Sqrt, Log2 function
 	maxIterations = 300
+
+	// maxParsedPrecision caps the fractional/exponent magnitude accepted by
+	// NewFromString and UnmarshalBinary so a malicious literal like
+	// "1e2000000000" cannot trigger a 10^|prec| big.Int allocation. 1<<17
+	// leaves ample headroom for legitimate inputs (existing tests already
+	// exercise 1000-digit fractions).
+	maxParsedPrecision = 1 << 17
 )
 
 var (
@@ -215,7 +222,10 @@ func NewFromUint64(value uint64, precision int) Decimal {
 // NewFromString returns a Decimal parsed from str.
 //
 // It accepts plain decimal values and scientific notation, and returns an
-// error for empty or malformed input.
+// error for empty or malformed input. The effective precision implied by the
+// fractional digits and the exponent must satisfy |precision| <= 1<<17;
+// inputs that would otherwise materialize a 10^|precision| big.Int are
+// rejected as malformed to bound parsing cost on untrusted input.
 func NewFromString(str string) (d Decimal, err error) {
 	str = strings.TrimSpace(str)
 	if len(str) == 0 {
@@ -292,6 +302,10 @@ func NewFromString(str string) (d Decimal, err error) {
 	// Apply exponent offset to precision
 	precision -= int(expOffset)
 
+	if precision > maxParsedPrecision || precision < -maxParsedPrecision {
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: precision %d out of range: %w", str, precision, ErrInvalidFormat)
+	}
+
 	// Parse the combined string as big.Int first
 	combined, ok := new(big.Int).SetString(combinedStr, 10)
 	if !ok {
@@ -300,9 +314,7 @@ func NewFromString(str string) (d Decimal, err error) {
 
 	if precision < 0 {
 		// Convert to integer by multiplying by 10^(-precision)
-		ten := big.NewInt(10)
-		multiplier := ten.Exp(ten, big.NewInt(int64(-precision)), nil)
-		combined.Mul(combined, multiplier)
+		combined.Mul(combined, safeGetPrecisionMultiplier(-precision))
 		precision = 0
 	}
 

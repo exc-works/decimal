@@ -273,7 +273,8 @@ func (d Decimal) MarshalBinary() (data []byte, err error) {
 
 // UnmarshalBinary implements encoding.BinaryUnmarshaler.
 // It expects the MarshalBinary layout, resets d to zero for empty input,
-// and returns an error when data is shorter than the fixed precision prefix.
+// and returns an error when data is shorter than the fixed precision prefix
+// or carries a precision that exceeds maxParsedPrecision.
 func (d *Decimal) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
 		d.i = &big.Int{}
@@ -285,8 +286,14 @@ func (d *Decimal) UnmarshalBinary(data []byte) error {
 			data, PrecisionFixedSize, len(data), ErrUnmarshal)
 	}
 
-	// Read the precision as fixed-width bytes.
-	d.prec = int(binary.BigEndian.Uint32(data[:PrecisionFixedSize]))
+	// Read the precision as fixed-width bytes. Reject values that would lazily
+	// blow up later when 10^prec is materialized for arithmetic.
+	prec := int(binary.BigEndian.Uint32(data[:PrecisionFixedSize]))
+	if prec > maxParsedPrecision {
+		return fmt.Errorf("error decoding binary: precision %d exceeds maximum %d: %w",
+			prec, maxParsedPrecision, ErrUnmarshal)
+	}
+	d.prec = prec
 
 	// Read the big.Int.
 	d.i = new(big.Int)

@@ -65,6 +65,8 @@ func TestNewFromString(t *testing.T) {
 		{name: "scientific upper", input: "3.7154500000000011E-15", want: "0.0000000000000037154500000000011", wantPrecision: 31, wantNeg: false},
 		{name: "scientific positive exponent", input: "3.7154e3", want: "3715.4", wantPrecision: 1, wantNeg: false},
 		{name: "scientific negative exponent", input: "-3.7154e5", want: "-371540", wantPrecision: 0, wantNeg: true},
+		{name: "exponent past precision cap rejected", input: "1e2000000000", wantErr: true},
+		{name: "negative exponent past precision cap rejected", input: "1e-2000000000", wantErr: true},
 	}
 
 	for _, tc := range tests {
