@@ -678,7 +678,7 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 		dWork = d.Rescale(work, RoundHalfEven)
 	}
 
-	rootInt := big.NewInt(0).SetInt64(root)
+	rootInt := big.NewInt(root)
 	guess := NewWithAppendPrec(1, dWork.prec)
 	delta := guess
 
@@ -1034,29 +1034,22 @@ func (d Decimal) BigInt() *big.Int {
 // BigRat returns d as an exact rational value.
 func (d Decimal) BigRat() *big.Rat {
 	d = initializeIfNeeded(d)
-	return new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	// big.Rat.SetFrac copies its inputs internally, so passing the cached
+	// precision multiplier directly is safe and avoids a redundant alloc.
+	return new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 }
 
 // Float64 returns the nearest float64 value for d and whether it is exact.
 func (d Decimal) Float64() (float64, bool) {
 	d = initializeIfNeeded(d)
-	rat := new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float64()
 }
 
 // Float32 returns the nearest float32 value for d and whether it is exact.
 func (d Decimal) Float32() (float32, bool) {
 	d = initializeIfNeeded(d)
-	rat := new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float32()
 }
 
@@ -1475,8 +1468,10 @@ func roundSignificand(digits string, exp, prec int) (string, int) {
 		}
 		bs[i] = '0'
 	}
-	// Carry out past the most significant digit.
-	return "1" + string(bs[:len(bs)-1]) + strings.Repeat("0", 0), exp + 1
+	// Carry out past the most significant digit. Truncate the trailing zero so
+	// the significand keeps the same length (one digit before the decimal
+	// point and prec digits after).
+	return "1" + string(bs[:len(bs)-1]), exp + 1
 }
 
 // expString returns the exponent suffix in the form "e±DD" (or "E±DD").
