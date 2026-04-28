@@ -25,7 +25,7 @@ const (
 )
 
 // MostSignificantBit returns the index of the most significant set bit in x.
-// It returns 0 for x == 0 and panics if x < 0.
+// It returns 0 for x == 0 and panics if x < 0. The argument is read-only.
 func MostSignificantBit(x *big.Int) uint {
 	if x.Sign() < 0 {
 		panic("MostSignificantBit of not positive number")
@@ -33,24 +33,7 @@ func MostSignificantBit(x *big.Int) uint {
 	if x.Sign() == 0 {
 		return 0
 	}
-
-	var msb uint
-	for bitLen := x.BitLen(); bitLen > 0; {
-		bitLenHalf := bitLen >> 1
-		if bitLenHalf<<1 != bitLen {
-			bitLenHalf++
-		}
-		mask := new(big.Int).Lsh(big.NewInt(1), uint(bitLenHalf))
-		mask = mask.Sub(mask, big.NewInt(1))
-		if x.Cmp(mask) >= 0 {
-			msb += uint(bitLenHalf)
-			bitLen -= bitLenHalf
-			x = x.Rsh(x, uint(bitLenHalf))
-		} else {
-			bitLen = bitLenHalf
-		}
-	}
-	return msb - 1
+	return uint(x.BitLen() - 1)
 }
 
 func unquoteIfQuoted(value any) (string, error) {

@@ -14,12 +14,18 @@ const (
 
 	// max number of iterations in Sqrt, Log2 function
 	maxIterations = 300
+
+	// maxParsedPrecision caps the fractional/exponent magnitude accepted by
+	// NewFromString and UnmarshalBinary so a malicious literal like
+	// "1e2000000000" cannot trigger a 10^|prec| big.Int allocation. 1<<17
+	// leaves ample headroom for legitimate inputs (existing tests already
+	// exercise 1000-digit fractions).
+	maxParsedPrecision = 1 << 17
 )
 
 var (
 	zeroInt = big.NewInt(0)
 	oneInt  = big.NewInt(1)
-	twoInt  = big.NewInt(2)
 	fiveInt = big.NewInt(5)
 	tenInt  = big.NewInt(10)
 )
@@ -149,53 +155,7 @@ func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) 
 	scaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
 	quotient, remainder := new(big.Int).QuoRem(scaled, den, new(big.Int))
 	if remainder.Sign() != 0 {
-		// Decide whether to adjust quotient based on the exact remainder,
-		// so digits beyond prec+1 are also accounted for.
-		awayFromZero := func() {
-			if remainder.Sign() > 0 {
-				quotient.Add(quotient, oneInt)
-			} else {
-				quotient.Sub(quotient, oneInt)
-			}
-		}
-
-		switch roundingMode {
-		case RoundDown:
-			// already truncated toward zero
-		case RoundUp:
-			awayFromZero()
-		case RoundCeiling:
-			if remainder.Sign() > 0 {
-				quotient.Add(quotient, oneInt)
-			}
-		case RoundHalfUp, RoundHalfDown, RoundHalfEven:
-			twiceAbsRem := new(big.Int).Abs(remainder)
-			twiceAbsRem.Mul(twiceAbsRem, twoInt)
-			cmp := twiceAbsRem.Cmp(den)
-
-			switch roundingMode {
-			case RoundHalfUp:
-				if cmp >= 0 {
-					awayFromZero()
-				}
-			case RoundHalfDown:
-				if cmp > 0 {
-					awayFromZero()
-				}
-			case RoundHalfEven:
-				if cmp > 0 {
-					awayFromZero()
-				} else if cmp == 0 {
-					if new(big.Int).Abs(quotient).Bit(0) != 0 {
-						awayFromZero()
-					}
-				}
-			}
-		case RoundUnnecessary:
-			panic("inexact conversion")
-		default:
-			panic("invalid rounding mode")
-		}
+		applyDivisionRounding(quotient, remainder, den, roundingMode)
 	}
 
 	return Decimal{
@@ -262,7 +222,10 @@ func NewFromUint64(value uint64, precision int) Decimal {
 // NewFromString returns a Decimal parsed from str.
 //
 // It accepts plain decimal values and scientific notation, and returns an
-// error for empty or malformed input.
+// error for empty or malformed input. The effective precision implied by the
+// fractional digits and the exponent must satisfy |precision| <= 1<<17;
+// inputs that would otherwise materialize a 10^|precision| big.Int are
+// rejected as malformed to bound parsing cost on untrusted input.
 func NewFromString(str string) (d Decimal, err error) {
 	str = strings.TrimSpace(str)
 	if len(str) == 0 {
@@ -339,6 +302,10 @@ func NewFromString(str string) (d Decimal, err error) {
 	// Apply exponent offset to precision
 	precision -= int(expOffset)
 
+	if precision > maxParsedPrecision || precision < -maxParsedPrecision {
+		return Decimal{}, fmt.Errorf("can't convert %s to decimal: precision %d out of range: %w", str, precision, ErrInvalidFormat)
+	}
+
 	// Parse the combined string as big.Int first
 	combined, ok := new(big.Int).SetString(combinedStr, 10)
 	if !ok {
@@ -347,9 +314,7 @@ func NewFromString(str string) (d Decimal, err error) {
 
 	if precision < 0 {
 		// Convert to integer by multiplying by 10^(-precision)
-		ten := big.NewInt(10)
-		multiplier := ten.Exp(ten, big.NewInt(int64(-precision)), nil)
-		combined.Mul(combined, multiplier)
+		combined.Mul(combined, safeGetPrecisionMultiplier(-precision))
 		precision = 0
 	}
 
@@ -477,32 +442,29 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 // Quo returns d / d2 rounded according to roundingMode.
 // It panics if d2 is zero or roundingMode is invalid.
 func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
+	validateRoundingMode(roundingMode)
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
-	// To adapt to the situation where the precision of both numbers is 0,
-	// the precision of both numbers is increased by 1, and the final calculation
-	// result is rescaled to 0.
-	if d.prec == 0 && d2.prec == 0 {
-		d1, d2 := d.RescaleDown(1), d2.RescaleDown(1)
-		// multiply precision twice
-		d1Twice := new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(1))
-		d1Twice = new(big.Int).Mul(d1Twice, safeGetPrecisionMultiplier(1))
-
-		return Decimal{
-			i:    new(big.Int).Quo(d1Twice, d2.i),
-			prec: 1 * 2,
-		}.Rescale(0, roundingMode)
+	if d2.i.Sign() == 0 {
+		panic("division by zero")
 	}
 
 	d1, d2, maxPrec := rescalePair(d, d2)
-	// multiply precision twice
-	d1Twice := new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(maxPrec))
-	d1Twice = new(big.Int).Mul(d1Twice, safeGetPrecisionMultiplier(maxPrec))
 
-	return Decimal{
-		i:    new(big.Int).Quo(d1Twice, d2.i),
-		prec: maxPrec,
-	}.round(roundingMode)
+	// Scale the numerator so the truncated quotient is already at maxPrec
+	// precision; the remainder carries the exact information needed to make
+	// the rounding decision.
+	num := d1.i
+	if maxPrec > 0 {
+		num = new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(maxPrec))
+	}
+
+	quo, rem := new(big.Int).QuoRem(num, d2.i, new(big.Int))
+	if rem.Sign() != 0 {
+		applyDivisionRounding(quo, rem, d2.i, roundingMode)
+	}
+
+	return Decimal{i: quo, prec: maxPrec}
 }
 
 // QuoDown returns d / d2 rounded down.
@@ -716,7 +678,7 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 		dWork = d.Rescale(work, RoundHalfEven)
 	}
 
-	rootInt := big.NewInt(0).SetInt64(root)
+	rootInt := big.NewInt(root)
 	guess := NewWithAppendPrec(1, dWork.prec)
 	delta := guess
 
@@ -1072,29 +1034,22 @@ func (d Decimal) BigInt() *big.Int {
 // BigRat returns d as an exact rational value.
 func (d Decimal) BigRat() *big.Rat {
 	d = initializeIfNeeded(d)
-	return new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	// big.Rat.SetFrac copies its inputs internally, so passing the cached
+	// precision multiplier directly is safe and avoids a redundant alloc.
+	return new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 }
 
 // Float64 returns the nearest float64 value for d and whether it is exact.
 func (d Decimal) Float64() (float64, bool) {
 	d = initializeIfNeeded(d)
-	rat := new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float64()
 }
 
 // Float32 returns the nearest float32 value for d and whether it is exact.
 func (d Decimal) Float32() (float32, bool) {
 	d = initializeIfNeeded(d)
-	rat := new(big.Rat).SetFrac(
-		new(big.Int).Set(d.i),
-		new(big.Int).Set(safeGetPrecisionMultiplier(d.prec)),
-	)
+	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float32()
 }
 
@@ -1513,8 +1468,10 @@ func roundSignificand(digits string, exp, prec int) (string, int) {
 		}
 		bs[i] = '0'
 	}
-	// Carry out past the most significant digit.
-	return "1" + string(bs[:len(bs)-1]) + strings.Repeat("0", 0), exp + 1
+	// Carry out past the most significant digit. Truncate the trailing zero so
+	// the significand keeps the same length (one digit before the decimal
+	// point and prec digits after).
+	return "1" + string(bs[:len(bs)-1]), exp + 1
 }
 
 // expString returns the exponent suffix in the form "e±DD" (or "E±DD").

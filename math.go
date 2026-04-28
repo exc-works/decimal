@@ -38,6 +38,10 @@ const defaultLogExpPrec = 30
 //	ln 2 = 0.69314718055994530941723212145817656807550013436025525412068000949...
 const ln2Literal = "0.6931471805599453094172321214581765680755001343602552541206800094933936"
 
+// ln2Decimal is ln2Literal pre-parsed once at init time so LnWithPrec does not
+// re-parse the constant on every call.
+var ln2Decimal = MustFromString(ln2Literal)
+
 // workingLogPrec returns a precision suitable for intermediate log/exp
 // computations. It uses the receiver's precision but never falls below
 // defaultLogExpPrec so that Log10/Ln/Exp remain meaningful for integer
@@ -124,18 +128,13 @@ func (d Decimal) LnWithPrec(prec int) (Decimal, error) {
 		work = defaultLogExpPrec
 	}
 
-	ln2, err := NewFromString(ln2Literal)
-	if err != nil {
-		return Decimal{}, fmt.Errorf("failed to parse ln2 constant: %w", err)
-	}
-
 	dScaled := d
 	if d.prec < work {
 		dScaled = d.Rescale(work, RoundHalfEven)
 	}
 	logD := dScaled.Log2()
 
-	product := logD.Mul(ln2, RoundHalfEven)
+	product := logD.Mul(ln2Decimal, RoundHalfEven)
 	return product.Rescale(prec, RoundHalfEven), nil
 }
 
