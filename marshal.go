@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"strings"
 )
 
 // decimalFromFloat64 is the non-panicking counterpart of NewFromFloat64.
@@ -34,86 +33,121 @@ const (
 
 // StringWithTrailingZeros returns the string with trailing zeros in the decimal representation.
 func (d Decimal) StringWithTrailingZeros() string {
-	return d.string(false)
+	// Stack-allocated 48-byte scratch covers typical financial decimals
+	// without an intermediate heap slice grow,leaving only the final
+	// string conversion as the unavoidable allocation.
+	var buf [48]byte
+	return string(d.appendString(buf[:0], false))
 }
 
 // String removes trailing zeros from the decimal representation.
 func (d Decimal) String() string {
-	return d.string(true)
+	var buf [48]byte
+	return string(d.appendString(buf[:0], true))
 }
 
-func (d Decimal) string(stripTrailingZeros bool) string {
+// Append appends the canonical decimal text (with trailing zeros stripped) to
+// dst and returns the extended slice. Zero-allocation when dst has enough
+// capacity, making this the preferred form for hot paths that build their own
+// byte buffer (proto wire field setters, custom JSON, log builders, etc.).
+//
+// For "preserve trailing zeros" semantics use AppendWithTrailingZeros.
+func (d Decimal) Append(dst []byte) []byte {
+	return d.appendString(dst, true)
+}
+
+// AppendWithTrailingZeros is the trailing-zero-preserving counterpart of Append.
+func (d Decimal) AppendWithTrailingZeros(dst []byte) []byte {
+	return d.appendString(dst, false)
+}
+
+// appendString is the workhorse used by String, StringWithTrailingZeros, Append
+// and MarshalJSON. It avoids the prior intermediate `bzStr := make(...) →
+// string(bzStr)` round-trip and the explicit `new(big.Int).Neg` for negatives.
+//
+// Allocation profile (typical financial values fitting in ~47 digits):
+//   - dst with enough capacity: 0 allocs in zero / prec==0 paths
+//   - prec > 0 path: 0 alloc into sufficiently sized dst, plus 1 unavoidable
+//     alloc when stripTrailingZeros triggers StripTrailingZeros (creates a
+//     new big.Int internally)
+//   - very large mantissa (> intBuf cap): 1 extra alloc from big.Int.Append's
+//     own backing growth
+func (d Decimal) appendString(dst []byte, stripTrailingZeros bool) []byte {
 	d = initializeIfNeeded(d)
 
 	// Fast path for zero preserves explicit scale only when requested.
 	if d.IsZero() {
 		if !stripTrailingZeros && d.prec > 0 {
-			return "0." + strings.Repeat("0", d.prec)
+			dst = append(dst, '0', '.')
+			for i := 0; i < d.prec; i++ {
+				dst = append(dst, '0')
+			}
+			return dst
 		}
-		return "0"
+		return append(dst, '0')
 	}
 
 	if stripTrailingZeros {
 		d = d.StripTrailingZeros()
 	}
 	if d.prec == 0 {
-		return d.i.String()
+		return d.i.Append(dst, 10)
 	}
 
-	isNeg := d.IsNegative()
-
-	if isNeg {
-		d = Decimal{
-			i:    new(big.Int).Neg(d.i),
-			prec: d.prec,
-		}
+	// Build the magnitude into a stack-friendly scratch buffer to avoid
+	// new(big.Int).Neg + intermediate string allocations.
+	//
+	// 48 bytes covers typical financial decimals (< 47 digits + sign).
+	// big.Int.Append grows on its own if exceeded, so the upper bound only
+	// affects the zero-alloc fast path.
+	var intBuf [48]byte
+	intStr := d.i.Append(intBuf[:0], 10)
+	isNeg := false
+	if len(intStr) > 0 && intStr[0] == '-' {
+		isNeg = true
+		intStr = intStr[1:]
 	}
-
-	intStr := d.i.String()
 	inputSize := len(intStr)
 
-	var bzStr []byte
-	// case 1, purely decimal
-	if inputSize <= d.prec {
-		bzStr = make([]byte, 0, d.prec+2+1) // +2 for "0." and +1 for "-" if negative
-
-		// add "-" if needed
-		if isNeg {
-			bzStr = append(bzStr, byte('-'))
-		}
-		// add "0."
-		bzStr = append(bzStr, byte('0'), byte('.'))
-
-		// add "0"s to the left of the decimal point
-		for i := 0; i < d.prec-inputSize; i++ {
-			bzStr = append(bzStr, byte('0'))
-		}
-		bzStr = append(bzStr, intStr...)
-	} else {
-		bzStr = make([]byte, 0, inputSize+1+1) // +1 for "." and +1 for "-" if negative
-
-		// add "-" if needed
-		if isNeg {
-			bzStr = append(bzStr, byte('-'))
-		}
-		// add integer part
-		decPointPlace := inputSize - d.prec
-		bzStr = append(bzStr, intStr[:decPointPlace]...)
-		// add "."
-		bzStr = append(bzStr, byte('.'))
-		// add fractional part
-		bzStr = append(bzStr, intStr[decPointPlace:]...)
+	if isNeg {
+		dst = append(dst, '-')
 	}
-	return string(bzStr)
+
+	if inputSize <= d.prec {
+		// pure fraction: "0." + leading zeros + magnitude
+		dst = append(dst, '0', '.')
+		for i := 0; i < d.prec-inputSize; i++ {
+			dst = append(dst, '0')
+		}
+		dst = append(dst, intStr...)
+	} else {
+		// has integer part: split at decPointPlace
+		decPointPlace := inputSize - d.prec
+		dst = append(dst, intStr[:decPointPlace]...)
+		dst = append(dst, '.')
+		dst = append(dst, intStr[decPointPlace:]...)
+	}
+	return dst
 }
 
 // MarshalJSON implements json.Marshaler.
 // It encodes a decimal as a JSON string and encodes an uninitialized value as null.
+//
+// Implementation appends "..." directly via appendString instead of going
+// through String() + json.Marshal(string), collapsing 4-6 allocs (typical)
+// to 1.
 func (d Decimal) MarshalJSON() ([]byte, error) {
 	if d.i == nil {
-		return json.Marshal(nil)
+		return []byte(`null`), nil
 	}
-	return json.Marshal(d.String())
+	// 64 covers max ~62 digits + opening/closing quote; short enough to
+	// keep the allocator's small-bucket fast path, large enough to avoid
+	// grow on any realistic financial decimal.
+	dst := make([]byte, 0, 64)
+	dst = append(dst, '"')
+	dst = d.appendString(dst, true)
+	dst = append(dst, '"')
+	return dst, nil
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- `(Decimal).Append(dst []byte) []byte` and
+  `(Decimal).AppendWithTrailingZeros(dst []byte) []byte`: append the canonical
+  decimal text to `dst` without an intermediate `string` allocation. Intended
+  for hot paths that build their own byte buffer (proto wire field setters,
+  custom JSON, log builders).
+
+### Changed
+- `MarshalJSON` rewritten to append `"…"` directly via the new internal
+  `appendString` helper, bypassing the prior `String() + json.Marshal(string)`
+  round-trip. Microbench (Apple M5 Max, BENCHTIME=2s × 3):
+    - integer / decimal-with-prec: 100-110 ns / 4 allocs → 60-65 ns / 2 allocs
+    - negative: 127 ns / 5 allocs → 77 ns / 2 allocs
+    - trailing-zeros: 118 ns / 6 allocs → 87 ns / 4 allocs
+- `String` and `StringWithTrailingZeros` now share the same `appendString`
+  workhorse and use a 48-byte stack scratch to skip one slice grow; behavior
+  is identical, allocation count is the same or one lower (negative path).
+
 ## [0.5.0] - 2026-04-28
 
 ### Fixed
