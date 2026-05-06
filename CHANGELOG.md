@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-06
+
 ### Added
 - `(Decimal).AppendText(b []byte) ([]byte, error)` and
   `(Decimal).AppendTextWithTrailingZeros(b []byte) ([]byte, error)`: append the
@@ -188,7 +190,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - JSON/YAML/Text/Binary/SQL serialization support.
 - Extensive unit tests, examples, and benchmarks.
 
-[Unreleased]: https://github.com/exc-works/decimal/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/exc-works/decimal/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/exc-works/decimal/releases/tag/v0.6.0
 [0.5.0]: https://github.com/exc-works/decimal/releases/tag/v0.5.0
 [0.4.0]: https://github.com/exc-works/decimal/releases/tag/v0.4.0
 [0.3.0]: https://github.com/exc-works/decimal/releases/tag/v0.3.0
