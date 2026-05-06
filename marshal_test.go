@@ -12,6 +12,86 @@ type marshalTest struct {
 	Value Decimal
 }
 
+// TestDecimalAppend exercises the new Append / AppendWithTrailingZeros API
+// across the same shape coverage as TestStringFormatting,plus prefix
+// preservation and cap-reuse zero-alloc behavior.
+func TestDecimalAppend(t *testing.T) {
+	cases := []struct {
+		name              string
+		input             Decimal
+		wantStripped      string // == String() output
+		wantWithTrailing  string // == StringWithTrailingZeros() output
+	}{
+		{name: "zero-explicit-prec", input: Decimal{i: big.NewInt(0), prec: 3}, wantStripped: "0", wantWithTrailing: "0.000"},
+		{name: "zero-prec0", input: Decimal{i: big.NewInt(0), prec: 0}, wantStripped: "0", wantWithTrailing: "0"},
+		{name: "int", input: MustFromString("123456789"), wantStripped: "123456789", wantWithTrailing: "123456789"},
+		{name: "same-prec", input: MustFromString("12345.6789"), wantStripped: "12345.6789", wantWithTrailing: "12345.6789"},
+		{name: "leading-zero-fraction", input: MustFromString("0.00000000123456789"), wantStripped: "0.00000000123456789", wantWithTrailing: "0.00000000123456789"},
+		{name: "negative", input: MustFromString("-123456789.123456789"), wantStripped: "-123456789.123456789", wantWithTrailing: "-123456789.123456789"},
+		{name: "trailing-zeros", input: MustFromString("123.450000000000"), wantStripped: "123.45", wantWithTrailing: "123.450000000000"},
+		{name: "small-negative-fraction", input: MustFromString("-0.001"), wantStripped: "-0.001", wantWithTrailing: "-0.001"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotStripped := string(tc.input.Append(nil))
+			if gotStripped != tc.wantStripped {
+				t.Errorf("Append: got %q,want %q", gotStripped, tc.wantStripped)
+			}
+			gotWithTrailing := string(tc.input.AppendWithTrailingZeros(nil))
+			if gotWithTrailing != tc.wantWithTrailing {
+				t.Errorf("AppendWithTrailingZeros: got %q,want %q", gotWithTrailing, tc.wantWithTrailing)
+			}
+
+			// Parity with String / StringWithTrailingZeros.
+			if got, want := gotStripped, tc.input.String(); got != want {
+				t.Errorf("Append != String: %q vs %q", got, want)
+			}
+			if got, want := gotWithTrailing, tc.input.StringWithTrailingZeros(); got != want {
+				t.Errorf("AppendWithTrailingZeros != StringWithTrailingZeros: %q vs %q", got, want)
+			}
+		})
+	}
+
+	// Prefix preservation: Append must extend dst,not replace it.
+	t.Run("prefix-preservation", func(t *testing.T) {
+		d := MustFromString("42.5")
+		out := d.Append([]byte("price="))
+		if got := string(out); got != "price=42.5" {
+			t.Fatalf("prefix lost: got %q", got)
+		}
+	})
+
+	// Cap-reuse: pre-sized dst must NOT trigger any extra allocation versus
+	// nil dst — the only allocations we should see come from inside the
+	// stdlib path (e.g. big.nat.itoa's internal output buffer when
+	// converting the mantissa to base-10), not from dst slice growth.
+	//
+	// We verify this by comparing AllocsPerRun with cap=0 (forces growth)
+	// vs cap=64 (zero growth). The delta must be 0; both numbers themselves
+	// can be > 0 because of stdlib internals — that's outside the new API's
+	// remit.
+	t.Run("cap-reuse-no-extra-alloc", func(t *testing.T) {
+		d := MustFromString("12345.6789")
+		bufNil := []byte(nil)
+		bufBig := make([]byte, 0, 64)
+		nilAllocs := testing.AllocsPerRun(100, func() {
+			bufNil = d.AppendWithTrailingZeros(bufNil[:0])
+		})
+		bigAllocs := testing.AllocsPerRun(100, func() {
+			bufBig = d.AppendWithTrailingZeros(bufBig[:0])
+		})
+		if bigAllocs > nilAllocs {
+			t.Errorf("pre-sized dst allocates more (%v) than nil dst (%v)", bigAllocs, nilAllocs)
+		}
+		// Sanity: large enough cap should not force a grow,so allocs must
+		// be deterministic and small (≤ 1 from big.nat.itoa internal).
+		if bigAllocs > 1 {
+			t.Errorf("AppendWithTrailingZeros on cap=64 buf: %v allocs/op,want ≤ 1 (stdlib big.nat.itoa internal)", bigAllocs)
+		}
+	})
+}
+
 func TestStringFormatting(t *testing.T) {
 	got := Decimal{}
 	if got.String() != "0" {

@@ -94,12 +94,19 @@ func (d Decimal) appendString(dst []byte, stripTrailingZeros bool) []byte {
 		return d.i.Append(dst, 10)
 	}
 
-	// Build the magnitude into a stack-friendly scratch buffer to avoid
-	// new(big.Int).Neg + intermediate string allocations.
+	// Build the magnitude into a stack scratch buffer to avoid the
+	// new(big.Int).Neg + intermediate string allocations the prior code
+	// needed for negatives.
 	//
-	// 48 bytes covers typical financial decimals (< 47 digits + sign).
-	// big.Int.Append grows on its own if exceeded, so the upper bound only
-	// affects the zero-alloc fast path.
+	// 48 bytes is a fast-path threshold, not a hard cap: Decimal accepts
+	// any precision up to maxParsedPrecision (1<<17), and the underlying
+	// big.Int can hold mantissas of arbitrary length. When the result
+	// of big.Int.Append doesn't fit, big.Int.Append itself allocates a
+	// fresh heap-backed slice and returns that — correctness is unchanged,
+	// only the zero-extra-alloc fast path is forfeited. 48 bytes covers
+	// the entire space of canonical financial values (< 47 digits + sign)
+	// without forcing the array to escape — verified via
+	// `go build -gcflags=-m=2`: "marshal.go:.. append does not escape".
 	var intBuf [48]byte
 	intStr := d.i.Append(intBuf[:0], 10)
 	isNeg := false
