@@ -10,6 +10,7 @@ import (
 var (
 	benchDecimalResult Decimal
 	benchStringResult  string
+	benchBytesResult   []byte
 )
 
 func BenchmarkDecimal_Add(b *testing.B) {
@@ -95,6 +96,33 @@ func BenchmarkDecimal_String(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				benchStringResult = tt.input.String()
+			}
+		})
+	}
+}
+
+func BenchmarkDecimal_MarshalJSON(b *testing.B) {
+	tests := []struct {
+		input Decimal
+		name  string
+	}{
+		{name: "int", input: MustFromString("123456789")},
+		{name: "same-prec", input: MustFromString("12345.6789")},
+		{name: "leading-zero-fraction", input: MustFromString("0.00000000123456789")},
+		{name: "negative", input: MustFromString("-123456789.123456789")},
+		{name: "trailing-zeros", input: MustFromString("123.450000000000")},
+	}
+
+	for _, tt := range tests {
+		b.Run(tt.name, func(b *testing.B) {
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				bz, err := tt.input.MarshalJSON()
+				if err != nil {
+					b.Fatalf("MarshalJSON returned error: %v", err)
+				}
+				benchBytesResult = bz
 			}
 		})
 	}

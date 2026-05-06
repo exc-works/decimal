@@ -12,6 +12,115 @@ type marshalTest struct {
 	Value Decimal
 }
 
+// TestDecimalAppendText exercises the new AppendText /
+// AppendTextWithTrailingZeros API across the same shape coverage as
+// TestStringFormatting, plus prefix preservation, cap-reuse zero-alloc
+// behavior, and encoding.TextAppender interface satisfaction.
+func TestDecimalAppendText(t *testing.T) {
+	cases := []struct {
+		name             string
+		input            Decimal
+		wantStripped     string // == String() output
+		wantWithTrailing string // == StringWithTrailingZeros() output
+	}{
+		{name: "zero-explicit-prec", input: Decimal{i: big.NewInt(0), prec: 3}, wantStripped: "0", wantWithTrailing: "0.000"},
+		{name: "zero-prec0", input: Decimal{i: big.NewInt(0), prec: 0}, wantStripped: "0", wantWithTrailing: "0"},
+		{name: "int", input: MustFromString("123456789"), wantStripped: "123456789", wantWithTrailing: "123456789"},
+		{name: "same-prec", input: MustFromString("12345.6789"), wantStripped: "12345.6789", wantWithTrailing: "12345.6789"},
+		{name: "leading-zero-fraction", input: MustFromString("0.00000000123456789"), wantStripped: "0.00000000123456789", wantWithTrailing: "0.00000000123456789"},
+		{name: "negative", input: MustFromString("-123456789.123456789"), wantStripped: "-123456789.123456789", wantWithTrailing: "-123456789.123456789"},
+		{name: "trailing-zeros", input: MustFromString("123.450000000000"), wantStripped: "123.45", wantWithTrailing: "123.450000000000"},
+		{name: "small-negative-fraction", input: MustFromString("-0.001"), wantStripped: "-0.001", wantWithTrailing: "-0.001"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotStrippedBytes, err := tc.input.AppendText(nil)
+			if err != nil {
+				t.Fatalf("AppendText returned error: %v", err)
+			}
+			gotStripped := string(gotStrippedBytes)
+			if gotStripped != tc.wantStripped {
+				t.Errorf("AppendText: got %q, want %q", gotStripped, tc.wantStripped)
+			}
+
+			gotWithTrailingBytes, err := tc.input.AppendTextWithTrailingZeros(nil)
+			if err != nil {
+				t.Fatalf("AppendTextWithTrailingZeros returned error: %v", err)
+			}
+			gotWithTrailing := string(gotWithTrailingBytes)
+			if gotWithTrailing != tc.wantWithTrailing {
+				t.Errorf("AppendTextWithTrailingZeros: got %q, want %q", gotWithTrailing, tc.wantWithTrailing)
+			}
+
+			// Parity with String / StringWithTrailingZeros.
+			if got, want := gotStripped, tc.input.String(); got != want {
+				t.Errorf("AppendText != String: %q vs %q", got, want)
+			}
+			if got, want := gotWithTrailing, tc.input.StringWithTrailingZeros(); got != want {
+				t.Errorf("AppendTextWithTrailingZeros != StringWithTrailingZeros: %q vs %q", got, want)
+			}
+
+			// Parity with MarshalText (which is now implemented via AppendText).
+			gotMT, err := tc.input.MarshalText()
+			if err != nil {
+				t.Fatalf("MarshalText returned error: %v", err)
+			}
+			if string(gotMT) != gotStripped {
+				t.Errorf("MarshalText != AppendText: %q vs %q", string(gotMT), gotStripped)
+			}
+		})
+	}
+
+	// Prefix preservation: AppendText must extend b, not replace it.
+	t.Run("prefix-preservation", func(t *testing.T) {
+		d := MustFromString("42.5")
+		out, err := d.AppendText([]byte("price="))
+		if err != nil {
+			t.Fatalf("AppendText returned error: %v", err)
+		}
+		if got := string(out); got != "price=42.5" {
+			t.Fatalf("prefix lost: got %q", got)
+		}
+	})
+
+	// Cap-reuse: pre-sized b must NOT trigger any extra allocation versus
+	// nil b — the only allocations we should see come from inside the
+	// stdlib path (e.g. big.nat.itoa's internal output buffer when
+	// converting the mantissa to base-10), not from b slice growth.
+	//
+	// We verify this by comparing AllocsPerRun with cap=0 (forces growth)
+	// vs cap=64 (zero growth). The delta must be 0; both numbers themselves
+	// can be > 0 because of stdlib internals — that's outside the new API's
+	// remit.
+	t.Run("cap-reuse-no-extra-alloc", func(t *testing.T) {
+		d := MustFromString("12345.6789")
+		bufNil := []byte(nil)
+		bufBig := make([]byte, 0, 64)
+		nilAllocs := testing.AllocsPerRun(100, func() {
+			bufNil, _ = d.AppendTextWithTrailingZeros(bufNil[:0])
+		})
+		bigAllocs := testing.AllocsPerRun(100, func() {
+			bufBig, _ = d.AppendTextWithTrailingZeros(bufBig[:0])
+		})
+		if bigAllocs > nilAllocs {
+			t.Errorf("pre-sized b allocates more (%v) than nil b (%v)", bigAllocs, nilAllocs)
+		}
+		// Sanity: large enough cap should not force a grow, so allocs must
+		// be deterministic and small (≤ 1 from big.nat.itoa internal).
+		if bigAllocs > 1 {
+			t.Errorf("AppendTextWithTrailingZeros on cap=64 b: %v allocs/op, want ≤ 1 (stdlib big.nat.itoa internal)", bigAllocs)
+		}
+	})
+
+	// encoding.TextAppender interface satisfaction (Go 1.24+).
+	t.Run("encoding-text-appender-interface", func(t *testing.T) {
+		var _ interface {
+			AppendText(b []byte) ([]byte, error)
+		} = Decimal{}
+	})
+}
+
 func TestStringFormatting(t *testing.T) {
 	got := Decimal{}
 	if got.String() != "0" {
