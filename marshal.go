@@ -46,19 +46,28 @@ func (d Decimal) String() string {
 	return string(d.appendString(buf[:0], true))
 }
 
-// Append appends the canonical decimal text (with trailing zeros stripped) to
-// dst and returns the extended slice. Zero-allocation when dst has enough
-// capacity, making this the preferred form for hot paths that build their own
-// byte buffer (proto wire field setters, custom JSON, log builders, etc.).
+// AppendText appends the canonical decimal text (with trailing zeros
+// stripped) to b and returns the extended slice. Zero-allocation when b
+// has enough capacity, making this the preferred form for hot paths that
+// build their own byte buffer (proto wire field setters, custom JSON, log
+// builders, etc.).
 //
-// For "preserve trailing zeros" semantics use AppendWithTrailingZeros.
-func (d Decimal) Append(dst []byte) []byte {
-	return d.appendString(dst, true)
+// AppendText satisfies the encoding.TextAppender interface added in Go 1.24
+// (`AppendText(b []byte) ([]byte, error)`). Formatting a Decimal is total —
+// the returned error is always nil — but the signature is preserved for
+// interface compatibility, so callers using the standard library's appending
+// marshalers (e.g. encoding/json, encoding/xml) get the zero-alloc path
+// automatically.
+//
+// For "preserve trailing zeros" semantics use AppendTextWithTrailingZeros.
+func (d Decimal) AppendText(b []byte) ([]byte, error) {
+	return d.appendString(b, true), nil
 }
 
-// AppendWithTrailingZeros is the trailing-zero-preserving counterpart of Append.
-func (d Decimal) AppendWithTrailingZeros(dst []byte) []byte {
-	return d.appendString(dst, false)
+// AppendTextWithTrailingZeros is the trailing-zero-preserving counterpart
+// of AppendText. Like AppendText, the returned error is always nil.
+func (d Decimal) AppendTextWithTrailingZeros(b []byte) ([]byte, error) {
+	return d.appendString(b, false), nil
 }
 
 // appendString is the workhorse used by String, StringWithTrailingZeros, Append
@@ -271,10 +280,14 @@ func (d *Decimal) UnmarshalYAML(unmarshal func(any) error) error {
 	}
 }
 
-// MarshalText implements encoding.TextMarshaler by returning the decimal string form.
+// MarshalText implements encoding.TextMarshaler by returning the decimal
+// string form.
+//
+// Implementation delegates to AppendText with a freshly-allocated buffer,
+// avoiding the prior `[]byte(d.String())` double-copy (build the string
+// inside d.String, then copy it to a []byte for the return).
 func (d Decimal) MarshalText() ([]byte, error) {
-	d = initializeIfNeeded(d)
-	return []byte(d.String()), nil
+	return d.AppendText(nil)
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler by parsing decimal text.
