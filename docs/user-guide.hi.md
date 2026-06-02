@@ -62,8 +62,6 @@ exact := decimal.MustFromString("1.20").MulExact(decimal.MustFromString("2.30"))
 fmt.Println(exact.StringWithTrailingZeros()) // 2.7600
 ```
 
-`Mul2` को `MulExact` के अप्रचलित संगतता उपनाम के रूप में रखा गया है।
-
 ## 5. राउंडिंग और रीस्केलिंग
 
 ```go

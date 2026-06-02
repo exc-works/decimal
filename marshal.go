@@ -409,29 +409,3 @@ func (d *Decimal) Scan(value any) error {
 		return nil
 	}
 }
-
-// Marshal implements gogo-protobuf custom type marshaling via MarshalBinary.
-func (d Decimal) Marshal() ([]byte, error) {
-	return d.MarshalBinary()
-}
-
-// MarshalTo implements gogo-protobuf custom type marshaling into data.
-func (d Decimal) MarshalTo(data []byte) (n int, err error) {
-	bz, err := d.MarshalBinary()
-	if err != nil {
-		return
-	}
-	n = copy(data, bz)
-	return
-}
-
-// Unmarshal implements gogo-protobuf custom type unmarshaling via UnmarshalBinary.
-func (d *Decimal) Unmarshal(data []byte) error {
-	return d.UnmarshalBinary(data)
-}
-
-// Size implements gogo-protobuf custom type sizing based on Marshal output.
-func (d Decimal) Size() int {
-	bz, _ := d.Marshal()
-	return len(bz)
-}

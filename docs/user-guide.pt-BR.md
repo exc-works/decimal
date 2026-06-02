@@ -62,8 +62,6 @@ exact := decimal.MustFromString("1.20").MulExact(decimal.MustFromString("2.30"))
 fmt.Println(exact.StringWithTrailingZeros()) // 2.7600
 ```
 
-`Mul2` é mantido como um alias de compatibilidade obsoleto de `MulExact`.
-
 ## 5. Arredondamento e Reescalonamento
 
 ```go

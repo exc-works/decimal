@@ -541,11 +541,6 @@ func TestDecimalMulExact(t *testing.T) {
 				t.Fatalf("MulExact Precision() = %d, want %d", got.Precision(), tc.wantPrec)
 			}
 
-			deprecated := tc.left.Mul2(tc.right)
-			assertDecimalEqual(t, deprecated, got)
-			if deprecated.Precision() != got.Precision() {
-				t.Fatalf("Mul2 Precision() = %d, want %d", deprecated.Precision(), got.Precision())
-			}
 		})
 	}
 }

@@ -625,38 +625,6 @@ func ExampleDecimal_Scan() {
 	// 1.23
 }
 
-func ExampleDecimal_Marshal() {
-	bz, err := MustFromString("1.23").Marshal()
-	fmt.Println(len(bz) > 0 && err == nil)
-	// Output:
-	// true
-}
-
-func ExampleDecimal_MarshalTo() {
-	d := MustFromString("1.23")
-	buf := make([]byte, d.Size())
-	n, err := d.MarshalTo(buf)
-	fmt.Println(n > 0 && err == nil)
-	// Output:
-	// true
-}
-
-func ExampleDecimal_Unmarshal() {
-	src := MustFromString("1.23")
-	bz, _ := src.Marshal()
-	var dst Decimal
-	_ = dst.Unmarshal(bz)
-	fmt.Println(dst)
-	// Output:
-	// 1.23
-}
-
-func ExampleDecimal_Size() {
-	fmt.Println(MustFromString("1.23").Size() > 0)
-	// Output:
-	// true
-}
-
 func ExampleDecimal_Log10() {
 	x := MustFromString("100")
 	result, _ := x.Log10()

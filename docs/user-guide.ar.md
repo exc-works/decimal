@@ -62,8 +62,6 @@ exact := decimal.MustFromString("1.20").MulExact(decimal.MustFromString("2.30"))
 fmt.Println(exact.StringWithTrailingZeros()) // 2.7600
 ```
 
-`Mul2` مُحتفَظ به كاسم مستعار توافقي مُهمَل لـ `MulExact`.
-
 ## 5. التقريب وإعادة ضبط المقياس
 
 ```go

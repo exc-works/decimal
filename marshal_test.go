@@ -503,35 +503,6 @@ func TestScan(t *testing.T) {
 	})
 }
 
-func TestProtoCompatMethods(t *testing.T) {
-	original := MustFromString("9.8760")
-
-	bz, err := original.Marshal()
-	if err != nil {
-		t.Fatalf("Marshal() returned error: %v", err)
-	}
-	if original.Size() != len(bz) {
-		t.Fatalf("Size() = %d, want %d", original.Size(), len(bz))
-	}
-
-	buf := make([]byte, len(bz))
-	n, err := original.MarshalTo(buf)
-	if err != nil {
-		t.Fatalf("MarshalTo() returned error: %v", err)
-	}
-	if n != len(bz) {
-		t.Fatalf("MarshalTo() copied = %d, want %d", n, len(bz))
-	}
-
-	var decoded Decimal
-	if err := decoded.Unmarshal(buf[:n]); err != nil {
-		t.Fatalf("Unmarshal() returned error: %v", err)
-	}
-	if decoded.String() != "9.876" {
-		t.Fatalf("Unmarshal() = %s, want 9.876", decoded.String())
-	}
-}
-
 func TestScan_NonFiniteFloat(t *testing.T) {
 	cases := []struct {
 		name  string
