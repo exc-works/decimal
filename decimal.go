@@ -419,13 +419,6 @@ func (d Decimal) MulExact(d2 Decimal) Decimal {
 	}
 }
 
-// Mul2 returns d * d2 without rounding, using the sum of input precisions.
-//
-// Deprecated: use MulExact instead.
-func (d Decimal) Mul2(d2 Decimal) Decimal {
-	return d.MulExact(d2)
-}
-
 // QuoWithPrec returns d / d2 rounded to prec decimal places using roundingMode.
 // It panics if prec is negative, d2 is zero, or roundingMode is invalid.
 func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) Decimal {

@@ -121,7 +121,6 @@ If parsing results in zero, precision is normalized to `0`.
 - `Mul(Decimal, decimal.RoundingMode)`
 - `MulDown(Decimal)`
 - `MulExact(Decimal)` (exact multiplication, no rounding, precision = `d.prec + d2.prec`)
-- `Mul2(Decimal)` (deprecated alias of `MulExact`)
 - `QuoWithPrec(Decimal, prec, decimal.RoundingMode)`
 - `Quo(Decimal, decimal.RoundingMode)`
 - `QuoDown(Decimal)`
@@ -345,12 +344,9 @@ viper.Unmarshal(&cfg, viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
 `ErrUnmarshal` for `Decimal`. The hook lives in the main module and pulls in
 no viper / mapstructure dependencies.
 
-### Binary / protobuf
+### Binary
 
 - `MarshalBinary()` / `UnmarshalBinary()`
-- `Marshal()` / `Unmarshal()`
-- `MarshalTo([]byte)`
-- `Size()`
 
 Binary format:
 

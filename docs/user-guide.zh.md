@@ -62,8 +62,6 @@ exact := decimal.MustFromString("1.20").MulExact(decimal.MustFromString("2.30"))
 fmt.Println(exact.StringWithTrailingZeros()) // 2.7600
 ```
 
-`Mul2` 保留为 `MulExact` 的 deprecated 兼容别名。
-
 ## 5. 舍入与重设精度
 
 ```go

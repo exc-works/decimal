@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Removed
+- Removed deprecated `Decimal.Mul2()` and the gogo-protobuf custom type
+  compatibility methods `Decimal.Marshal()`, `Decimal.MarshalTo([]byte)`,
+  `(*Decimal).Unmarshal([]byte)`, and `Decimal.Size()`. Use
+  `Decimal.MulExact()` and `MarshalBinary()` / `UnmarshalBinary()` instead.
+
 ## [0.6.0] - 2026-05-06
 
 ### Added
