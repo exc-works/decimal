@@ -181,12 +181,14 @@ func certifyDecimal(prec, extraDigits int, evaluate func(*big.Int, int) (fixedIn
 	if prec > maxParsedPrecision || extraDigits > maxParsedPrecision-prec {
 		return Decimal{}, fmt.Errorf("transcendental precision budget exceeded: %w", ErrNoConvergence)
 	}
+	baseBits := decimalBits(prec + extraDigits)
+	maxBits := decimalBits(maxParsedPrecision)
 	multiplier := safeGetPrecisionMultiplier(prec)
 	coefficient := new(big.Int)
 	var scale, upper, remainder big.Int
 	for guard := 64; guard <= 8192; guard *= 2 {
-		bits := decimalBits(prec+extraDigits) + guard
-		if bits > decimalBits(maxParsedPrecision) {
+		bits := baseBits + guard
+		if bits > maxBits {
 			break
 		}
 		scale.SetInt64(1).Lsh(&scale, uint(bits))
