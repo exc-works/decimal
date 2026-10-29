@@ -88,6 +88,12 @@ func RegisterGoPlaygroundValidator(v *validator.Validate) error {
 // Built-in locales: en, zh (Simplified), zh_Hant (Traditional Chinese, also
 // matches zh_TW), ja, ko, fr, es, de, pt, pt_BR, ru, ar, hi.
 func RegisterGoPlaygroundValidatorTranslations(v *validator.Validate, trans ut.Translator) error {
+	if v == nil {
+		return fmt.Errorf("validator is nil: %w", ErrInvalidArgument)
+	}
+	if trans == nil {
+		return fmt.Errorf("translator is nil: %w", ErrInvalidArgument)
+	}
 	return RegisterGoPlaygroundValidatorTranslationsWithMessages(
 		v,
 		trans,
