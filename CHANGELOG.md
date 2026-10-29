@@ -7,6 +7,29 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+- `QuoWithPrec` now rounds the exact division directly to the requested
+  precision, avoiding incorrect results caused by rounding twice (for example,
+  `16.0 / 11` at precision 0 with `RoundHalfEven` now returns `1`, not `2`).
+- Root calculations start from an input-magnitude-based upper bound, allowing
+  large and small inputs such as `sqrt(1e200)` to converge within the iteration
+  budget. Exhausting that budget now returns an error wrapping the new
+  `ErrNoConvergence` sentinel instead of silently returning an inaccurate value.
+- Decimal parsing rejects repeated mantissa or exponent signs instead of
+  silently accepting inputs such as `--1` and `1e--2`.
+- `Rescale`, `SignificantFigures`, and `NewFromBigRatWithPrec` reject invalid
+  rounding modes even on zero, exact, and unchanged-precision fast paths.
+- CI and release checks include the optional BSON build and the separate
+  mapstructure integration module. CI also checks their race builds and vet
+  results, with cache keys covering both modules.
+- Corrected the dependency documentation: disabling BSON excludes the MongoDB
+  driver from compiled dependencies, but validator dependencies remain.
+- Documented project-local build caches and a fresh-cache retry for race
+  toolchain build failures; CI uses a runner-local build cache.
+- Configure workflow caches in a runner step instead of using the unavailable
+  `runner` context in job-level `env`. CI now validates both workflows with
+  actionlint, including expression context availability.
+
 ## [0.7.0] - 2026-06-02
 
 ### Removed

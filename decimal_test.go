@@ -117,6 +117,60 @@ func TestNewFromFloat64(t *testing.T) {
 	}
 }
 
+func TestNewFromStringSigns(t *testing.T) {
+	for _, input := range []string{
+		"--1", "-+1", "+-1", "++1", "--0.1", "-+0.1", "+-0.1", "++0.1",
+		"1e--2", "1e-+2", "1e+-2", "1e++2", "1E--2", "--1e2",
+		"1.2-3", "1e2-3", "+.1", "-.1", "+1.", "-1.", "+", "1e+", "1e-",
+	} {
+		t.Run(input, func(t *testing.T) {
+			_, err := NewFromString(input)
+			if !errors.Is(err, ErrInvalidFormat) {
+				t.Fatalf("NewFromString(%q): got %v, want ErrInvalidFormat", input, err)
+			}
+		})
+	}
+	for _, tc := range []struct{ input, want string }{
+		{"+1", "1"}, {"-1", "-1"}, {"+1.25", "1.25"}, {"-1.25", "-1.25"},
+		{"1e+2", "100"}, {"1E-2", "0.01"}, {"-1e-2", "-0.01"},
+		{" +1.20e+2 ", "120"}, {"-0.00e-2", "0"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			got, err := NewFromString(tc.input)
+			if err != nil || got.String() != tc.want {
+				t.Fatalf("NewFromString(%q): got %s, err %v; want %s", tc.input, got, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestInvalidRoundingModes(t *testing.T) {
+	d := mustDecimal(t, "1.25")
+	for _, mode := range []RoundingMode{-1, 99} {
+		for _, tc := range []struct {
+			name string
+			call func()
+		}{
+			{"rescale same precision", func() { d.Rescale(2, mode) }},
+			{"rescale increase precision", func() { d.Rescale(3, mode) }},
+			{"rescale decrease precision", func() { d.Rescale(1, mode) }},
+			{"rescale uninitialized", func() { (Decimal{}).Rescale(0, mode) }},
+			{"significant zero", func() { Zero.SignificantFigures(2, mode) }},
+			{"significant unchanged", func() { d.SignificantFigures(4, mode) }},
+			{"significant fraction", func() { d.SignificantFigures(2, mode) }},
+			{"significant integer", func() { New(123).SignificantFigures(2, mode) }},
+			{"rational zero", func() { _, _ = NewFromBigRatWithPrec(new(big.Rat), 2, mode) }},
+			{"rational exact", func() { _, _ = NewFromBigRatWithPrec(big.NewRat(1, 4), 2, mode) }},
+			{"rational inexact", func() { _, _ = NewFromBigRatWithPrec(big.NewRat(1, 3), 2, mode) }},
+			{"multiply exact", func() { One.Mul(One, mode) }},
+			{"divide exact", func() { One.Quo(One, mode) }},
+			{"divide with precision", func() { One.QuoWithPrec(One, 2, mode) }},
+		} {
+			t.Run(tc.name+"/"+strconv.Itoa(int(mode)), func(t *testing.T) { assertPanic(t, tc.call) })
+		}
+	}
+}
+
 func TestNewFromFloat32(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -647,6 +701,73 @@ func TestDecimalPower(t *testing.T) {
 				t.Fatalf("Precision() = %d, want %d", got.Precision(), tc.wantPrec)
 			}
 		})
+	}
+}
+
+func TestQuoWithPrecSingleRounding(t *testing.T) {
+	for _, mode := range []RoundingMode{RoundDown, RoundUp, RoundCeiling, RoundHalfUp, RoundHalfDown, RoundHalfEven} {
+		for _, input := range []string{"16", "16.0", "-16.0", "17.0", "1.000", "-1.000"} {
+			for _, divisor := range []int64{11, -11, 22} {
+				a, b := mustDecimal(t, input), New(divisor)
+				for prec := 0; prec <= 4; prec++ {
+					exact := new(big.Rat).Quo(a.BigRat(), b.BigRat())
+					want, err := NewFromBigRatWithPrec(exact, prec, mode)
+					if err != nil {
+						t.Fatal(err)
+					}
+					got := a.QuoWithPrec(b, prec, mode)
+					if !got.Equal(want) || got.Precision() != prec {
+						t.Fatalf("%s / %d at precision %d, mode %d: got %s, want %s", input, divisor, prec, mode, got, want)
+					}
+				}
+			}
+		}
+	}
+	assertDecimalEqual(t, mustDecimal(t, "1.00").QuoWithPrec(New(4), 2, RoundUnnecessary), mustDecimal(t, "0.25"))
+	assertPanic(t, func() { One.QuoWithPrec(New(3), 2, RoundUnnecessary) })
+	assertPanic(t, func() { One.QuoWithPrec(One, -1, RoundDown) })
+	assertPanic(t, func() { One.QuoWithPrec(Zero, 2, RoundDown) })
+	assertPanic(t, func() { One.QuoWithPrec(One, 2, RoundingMode(99)) })
+}
+
+func TestRootsAcrossMagnitudes(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		root  int64
+		prec  int
+		want  string
+	}{
+		{"1e200", 2, 2, "1e100"},
+		{"4e200", 2, 2, "2e100"},
+		{"1e20", 10, 2, "100"},
+		{"-1e21", 3, 2, "-1e7"},
+		{"1e-200", 2, 105, "1e-100"},
+		{"8e-90", 3, 35, "2e-30"},
+	} {
+		got, err := mustDecimal(t, tc.input).ApproxRootWithPrec(tc.root, tc.prec)
+		if err != nil {
+			t.Fatalf("root(%s, %d): %v", tc.input, tc.root, err)
+		}
+		if !got.Equal(mustDecimal(t, tc.want)) || got.Precision() != tc.prec {
+			t.Fatalf("root(%s, %d): got %s (precision %d), want %s (precision %d)", tc.input, tc.root, got, got.Precision(), tc.want, tc.prec)
+		}
+	}
+}
+
+func TestApproxRootIterationLimit(t *testing.T) {
+	for _, input := range []string{"1e401", "-1e401"} {
+		// A high odd degree still converges slowly from a magnitude-based
+		// upper bound. Either converge to the known root or report failure;
+		// never return an unconverged approximation as a successful result.
+		d := mustDecimal(t, input)
+		got, err := d.ApproxRootWithPrec(401, 2)
+		if err == nil {
+			assertDecimalEqual(t, got, New(int64(d.Sign())*10))
+			continue
+		}
+		if !errors.Is(err, ErrNoConvergence) {
+			t.Fatalf("root(%s, 401): got %s, err %v; want ErrNoConvergence", input, got, err)
+		}
 	}
 }
 

@@ -109,6 +109,9 @@ It trims leading/trailing spaces and rejects malformed formats such as:
 - `.1`
 - multiple decimal points
 - missing or invalid exponent
+- repeated signs such as `--1` or `1e--2`
+
+A single leading `+` or `-` is accepted in both the mantissa and exponent.
 
 If parsing results in zero, precision is normalized to `0`.
 
@@ -203,6 +206,7 @@ If parsing results in zero, precision is normalized to `0`.
 
 ### BSON
 
+- Requires the `bson` build tag (for example, `go build -tags bson ./...`).
 - `MarshalBSONValue()` / `UnmarshalBSONValue()` via `go.mongodb.org/mongo-driver/v2/bson`
 - Encodes as BSON string; uninitialized encodes as BSON null
 - Decodes from String, Double, Int32, Int64, Decimal128, Null
@@ -392,6 +396,7 @@ via `errors.Is`:
 - `ErrDivideByZero` — division by zero
 - `ErrNegativeRoot` — even root of a negative value (`Sqrt`, `ApproxRoot`)
 - `ErrInvalidRoot` — non-positive `root` passed to `ApproxRoot`
+- `ErrNoConvergence` — root calculation reached its iteration limit before converging
 - `ErrInvalidLog` — logarithm of a non-positive value
 - `ErrRoundUnnecessary` — rounding required under `RoundUnnecessary` mode
 - `ErrUnmarshal` — binary/YAML/BSON/SQL unmarshal failures
@@ -425,6 +430,8 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 - `Log2()` panics unless value `> 0`
 - `ApproxRoot(root)` requires `root > 0`
 - even root of negative values returns error
+- root calculations return `ErrNoConvergence` if the iteration limit is reached;
+  always check the returned error before using the result
 - `Quo` has a special integer-division path when both precisions are `0`
 - binary encoding normalizes trailing zeros (`7.50` and `7.5000` can encode identically)
 
@@ -453,7 +460,7 @@ git push origin v0.1.0
 ### BSON support (optional)
 
 BSON support is compiled out by default so that downstream projects are not
-forced to pull in `go.mongodb.org/mongo-driver/v2`. To enable it, build with
+required to compile or link `go.mongodb.org/mongo-driver/v2`. To enable it, build with
 the `bson` build tag:
 
 ```bash
@@ -464,4 +471,9 @@ go test  -tags bson ./...
 When the tag is set, `Decimal` and `NullDecimal` implement
 `bson.ValueMarshaler` / `bson.ValueUnmarshaler` (see `marshal_bson.go`).
 Without the tag, no BSON code is compiled and the MongoDB driver is not
-linked into the resulting binary, keeping the core library dependency-free.
+included in this package's compiled dependencies. The package still imports
+`github.com/go-playground/validator/v10` and
+`github.com/go-playground/universal-translator`, together with their transitive
+dependencies, because validator integration is compiled by default. The MongoDB
+driver remains listed in `go.mod` for builds with the `bson` tag; disabling BSON
+does not make the Go module dependency-free.

@@ -17,14 +17,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Configure Go build cache
+        run: echo "GOCACHE=$RUNNER_TEMP/decimal-go-build" >> "$GITHUB_ENV"
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           check-latest: true
           cache: true
+          cache-dependency-path: |
+            go.sum
+            integration/mapstructure/go.sum
 
       - name: Verify tests
+        run: go test ./...
+
+      - name: Verify BSON support
+        run: go test -tags bson ./...
+
+      - name: Verify mapstructure integration
+        working-directory: integration/mapstructure
         run: go test ./...
 
       - name: Publish GitHub Release

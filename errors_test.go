@@ -142,6 +142,7 @@ func TestSentinelsDistinct(t *testing.T) {
 		ErrInvalidFormat,
 		ErrNegativeRoot,
 		ErrInvalidRoot,
+		ErrNoConvergence,
 		ErrInvalidLog,
 		ErrRoundUnnecessary,
 		ErrUnmarshal,

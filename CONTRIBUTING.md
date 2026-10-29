@@ -17,12 +17,40 @@ go test ./...
 Run these before opening a PR:
 
 ```bash
-gofmt -w *.go
+export GOCACHE="$PWD/.cache/go-build"
+gofmt -w ./*.go ./integration/mapstructure/*.go
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 go vet ./...
 go test ./...
 go test -race ./...
 go test -cover ./...
+go vet -tags bson ./...
+go test -race -tags bson ./...
 ```
+
+The mapstructure integration is a separate Go module. Root-level `./...`
+commands do not include it, so also run:
+
+```bash
+cd integration/mapstructure
+go vet ./...
+go test -race ./...
+```
+
+The project-local cache above is ignored by Git and avoids dependence on the
+shared Go build cache. If a race build reports an unexpected toolchain error
+such as `runtime/race: package testmain: cannot find package`, first retry
+with a fresh cache, using the same Go version:
+
+```bash
+GOCACHE="$(mktemp -d "${TMPDIR:-/tmp}/decimal-go-build.XXXXXX")" go test -race ./...
+```
+
+Run this command from the repository root. If it succeeds, the shared cache is
+implicated; no library concurrency fix is needed for that build failure. If it
+still fails, include `go version`, `go env GOROOT GOCACHE GOTOOLCHAIN`, and the
+complete error in the issue report. CI uses a runner-local cache and checks
+the default build, BSON build, and mapstructure integration separately.
 
 ## Pull Request Guidelines
 
