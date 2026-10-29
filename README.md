@@ -244,6 +244,11 @@ YAML scalars are parsed from their original text, preserving decimal digits
 instead of converting through `float64`. The goccy YAML scalar parser is a
 direct dependency used to preserve numeric tokens, quotes, and tags.
 
+Numeric scalars retain the decoder's YAML numeric interpretation, including
+octal (`012` is `10`), hexadecimal/binary prefixes, underscores, `.5`, and
+`1.`. Quoted or `!!str` scalars retain `NewFromString` semantics: `"012"` is
+decimal `12`, while `"0x10"` and `"1_000"` are invalid decimal strings.
+
 ### Text
 
 - `MarshalText()`

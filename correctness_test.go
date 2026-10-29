@@ -1,14 +1,51 @@
 package decimal
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"math/big"
+	"os"
 	"strings"
 	"testing"
 
 	yaml "github.com/goccy/go-yaml"
 )
+
+func TestYAMLScalarSyntax(t *testing.T) {
+	data, err := os.ReadFile("testdata/yaml_scalars.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []struct {
+		Input, Want string
+		Error       bool
+	}
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range cases {
+		t.Run(tc.Input, func(t *testing.T) {
+			var value Decimal
+			var nullable NullDecimal
+			err := yaml.Unmarshal([]byte(tc.Input), &value)
+			nullErr := yaml.Unmarshal([]byte(tc.Input), &nullable)
+			if tc.Error {
+				if err == nil || nullErr == nil {
+					t.Fatalf("expected errors, got Decimal=%s (%v), NullDecimal=%s (%v)", value, err, nullable, nullErr)
+				}
+				return
+			}
+			if err != nil || nullErr != nil {
+				t.Fatalf("Decimal error %v, NullDecimal error %v", err, nullErr)
+			}
+			want := MustFromString(tc.Want)
+			if !value.Equal(want) || !nullable.Valid || !nullable.Decimal.Equal(want) {
+				t.Fatalf("got %s and %s, want %s", value, nullable, want)
+			}
+		})
+	}
+}
 
 func TestPowerNegativeWithoutIntermediateRounding(t *testing.T) {
 	for _, tc := range []struct {
