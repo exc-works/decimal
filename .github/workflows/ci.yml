@@ -39,7 +39,7 @@ jobs:
 
       - name: Check formatting
         run: |
-          unformatted=$(gofmt -l *.go integration/mapstructure/*.go)
+          unformatted=$(gofmt -l ./*.go ./integration/mapstructure/*.go)
           if [ -n "$unformatted" ]; then
             echo "These files are not gofmt-ed:"
             echo "$unformatted"

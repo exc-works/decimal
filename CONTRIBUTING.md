@@ -18,7 +18,7 @@ Run these before opening a PR:
 
 ```bash
 export GOCACHE="$PWD/.cache/go-build"
-gofmt -w *.go integration/mapstructure/*.go
+gofmt -w ./*.go ./integration/mapstructure/*.go
 go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 go vet ./...
 go test ./...
