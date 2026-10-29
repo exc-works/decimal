@@ -8,6 +8,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- Logarithms and exponentials now certify final HalfEven rounding using
+  outward-rounded intervals and explicit series tail bounds. Working
+  precision, constants, and iteration counts scale with the request; exhausted
+  budgets return ErrNoConvergence instead of inaccurate success values.
+- Corrected Log2 rounding at small input scales and replaced two legacy test
+  expectations that encoded last-place errors. Added Log2WithPrec for explicit
+  target precision and error handling.
 - Negative integer powers retain the exact denominator until final rounding
   and handle `MinInt64` without signed overflow or infinite recursion.
 - Roots use exact integer roots and midpoint comparisons, fixing HalfEven

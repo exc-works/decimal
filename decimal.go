@@ -12,7 +12,8 @@ import (
 const (
 	cacheMaxPrecision = 128
 
-	// Maximum number of iterations in root and Log2 calculations.
+	// Maximum number of integer-root refinements. Transcendental series
+	// budgets are derived from their working precision.
 	maxIterations = 300
 
 	// maxParsedPrecision caps the fractional/exponent magnitude accepted by
@@ -692,49 +693,22 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 	return roundedIntegerRoot(d, root, prec)
 }
 
-// Log2 returns an approximate log base 2 of d via iterative refinement.
-// The iteration is bounded by maxIterations.
-// It panics if d is not greater than 0.
+// Log2 returns log2(d), rounded with RoundHalfEven to d.Precision() places.
+// It panics for non-positive inputs or if the precision budget is exhausted.
+// Use Log2WithPrec to request an explicit precision and receive errors.
 func (d Decimal) Log2() Decimal {
-	d = initializeIfNeeded(d)
-	if d.Sign() <= 0 {
-		panic("value must greater than 0")
+	result, err := d.Log2WithPrec(d.prec)
+	if err != nil {
+		panic(err)
 	}
-
-	oneDec := NewWithAppendPrec(1, d.prec)
-	twoDec := NewWithAppendPrec(2, d.prec)
-
-	lessOne := d.Cmp(oneDec) < 0
-	copyD := d
-	exp := 4 * d.prec
-	if lessOne {
-		// Ensure copyD greater than 1
-		copyD = copyD.Mul(New(2).Power(int64(exp)), RoundHalfEven)
-	}
-
-	intPart, _ := copyD.Remainder()
-	n := MostSignificantBit(intPart)
-	resultDec := NewFromUintWithAppendPrec(uint64(n), copyD.prec)
-
-	int64N := int64(n)
-	if int64N < 0 {
-		panic(fmt.Sprintf("Most Significant Bit %d too larger", n))
-	}
-
-	remDec := copyD.Quo(New(2).Power(int64N), RoundHalfEven)
-	for i := 0; i < maxIterations && remDec.Sign() > 0; i++ {
-		if remDec.GTE(twoDec) {
-			resultDec = resultDec.Add(oneDec.Quo(twoDec.Power(int64(i)), RoundHalfEven))
-			remDec = remDec.Quo(twoDec, RoundHalfEven)
-		}
-		remDec = remDec.Power(2)
-	}
-
-	if lessOne {
-		resultDec = resultDec.Sub(New(int64(exp)))
-	}
-	return resultDec
+	return result
 }
+
+// Log2WithPrec returns log2(d) correctly rounded to prec decimal places using
+// RoundHalfEven. It returns ErrInvalidLog for non-positive inputs or
+// ErrNoConvergence if rounding cannot be certified within the calculation
+// budget. It panics if prec is negative.
+func (d Decimal) Log2WithPrec(prec int) (Decimal, error) { return certifiedLog(d, prec, 2) }
 
 // RescaleDown returns d rescaled to prec decimal places using RoundDown.
 // It panics if prec is negative.

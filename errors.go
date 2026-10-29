@@ -31,8 +31,8 @@ var (
 	// was supplied to ApproxRoot.
 	ErrInvalidRoot = errors.New("decimal: invalid root")
 
-	// ErrNoConvergence indicates a root calculation exhausted its iteration
-	// limit before reaching the working precision.
+	// ErrNoConvergence indicates a root or transcendental calculation could
+	// not certify its result within the iteration or precision budget.
 	ErrNoConvergence = errors.New("decimal: iteration did not converge")
 
 	// ErrInvalidLog indicates an attempt to take the logarithm of a
