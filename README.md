@@ -153,6 +153,12 @@ using outward-rounded intervals, including series remainders. Their constants
 and series lengths adapt to the working precision. `Log2` retains its receiver
 scale; the other default methods use `max(d.Precision(), 30)`.
 
+This follows a bounded **Ziv strategy**: evaluate with guard precision, accept
+only when both interval endpoints round to the same decimal, and otherwise
+increase internal precision and recompute. The output scale stays fixed.
+Guard precision doubles from 64 to 8192 bits, allowing at most eight attempts;
+these limits are this library's resource policy, not universal Ziv parameters.
+
 Transcendental input scales and working precision are bounded by `1<<17`.
 Exponential working precision also reserves `ceil(abs(x))` digits to absorb
 growth during argument reduction. If the budget is exceeded, or the interval
