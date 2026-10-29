@@ -49,6 +49,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   actionlint, including expression context availability.
 
 ### Performance
+- Separate interval primitives, logarithms, exponentials, and the shared
+  precision driver. Document Ziv's enclosure/round/refine strategy and its
+  resource budget; encapsulate reusable rounding scratch without changing
+  the precision or rounding contracts.
 - Reuse scratch integers and interval buffers throughout logarithm and
   exponential series and precision refinement. Normalize logarithm inputs
   once per calculation and share ln(2) bounds within each precision attempt.
