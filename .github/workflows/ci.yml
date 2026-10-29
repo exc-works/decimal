@@ -14,6 +14,9 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
 
+    env:
+      GOCACHE: ${{ runner.temp }}/decimal-go-build
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,13 +27,16 @@ jobs:
           go-version-file: go.mod
           check-latest: true
           cache: true
+          cache-dependency-path: |
+            go.sum
+            integration/mapstructure/go.sum
 
       - name: Show Go version
         run: go version
 
       - name: Check formatting
         run: |
-          unformatted=$(gofmt -l *.go)
+          unformatted=$(gofmt -l *.go integration/mapstructure/*.go)
           if [ -n "$unformatted" ]; then
             echo "These files are not gofmt-ed:"
             echo "$unformatted"
@@ -48,3 +54,17 @@ jobs:
 
       - name: Coverage
         run: go test -cover ./...
+
+      - name: Vet BSON support
+        run: go vet -tags bson ./...
+
+      - name: Test BSON support with race detector
+        run: go test -race -tags bson ./...
+
+      - name: Vet mapstructure integration
+        working-directory: integration/mapstructure
+        run: go vet ./...
+
+      - name: Test mapstructure integration with race detector
+        working-directory: integration/mapstructure
+        run: go test -race ./...

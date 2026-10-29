@@ -12,7 +12,7 @@ import (
 const (
 	cacheMaxPrecision = 128
 
-	// max number of iterations in Sqrt, Log2 function
+	// Maximum number of iterations in root and Log2 calculations.
 	maxIterations = 300
 
 	// maxParsedPrecision caps the fractional/exponent magnitude accepted by
@@ -138,9 +138,11 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 // NewFromBigRatWithPrec returns a Decimal converted from value at precision prec.
 //
 // The result is rounded according to roundingMode.
-// It returns an error when value is nil and panics when prec is negative.
+// It returns an error when value is nil and panics when prec is negative
+// or roundingMode is invalid.
 func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) (Decimal, error) {
 	requireNonNegativePrecision(prec)
+	validateRoundingMode(roundingMode)
 	if value == nil {
 		return Decimal{}, fmt.Errorf("big.Rat cannot be nil: %w", ErrInvalidFormat)
 	}
@@ -242,20 +244,8 @@ func NewFromString(str string) (d Decimal, err error) {
 			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent: %w", str, ErrInvalidFormat)
 		}
 
-		// Handle optional sign in exponent
-		expSign := int64(1)
-		switch expStr[0] {
-		case '+':
-			expStr = expStr[1:]
-		case '-':
-			expSign = -1
-			expStr = expStr[1:]
-		}
-
-		if len(expStr) == 0 {
-			return Decimal{}, fmt.Errorf("can't convert %s to decimal: missing exponent value: %w", str, ErrInvalidFormat)
-		}
-
+		// ParseInt accepts at most one leading sign. Stripping a sign first
+		// would allow malformed exponents such as "--2" or "+-2".
 		expInt, err := strconv.ParseInt(expStr, 10, 32)
 		if err != nil {
 			if e, ok := errors.AsType[*strconv.NumError](err); ok && errors.Is(e.Err, strconv.ErrRange) {
@@ -264,14 +254,15 @@ func NewFromString(str string) (d Decimal, err error) {
 			return Decimal{}, fmt.Errorf("can't convert %s to decimal: exponent is not numeric: %w", str, ErrInvalidFormat)
 		}
 
-		expOffset = expSign * expInt
+		expOffset = expInt
 		str = str[:eIndex]
 	}
 
-	// Extract negative symbol
+	// Consume at most one mantissa sign; the remaining characters must be
+	// digits, with an optional decimal point checked below.
 	neg := false
-	if len(str) > 0 && str[0] == '-' {
-		neg = true
+	if len(str) > 0 && (str[0] == '-' || str[0] == '+') {
+		neg = str[0] == '-'
 		str = str[1:]
 	}
 
@@ -297,6 +288,11 @@ func NewFromString(str string) (d Decimal, err error) {
 
 	if combinedStr == "" {
 		return Decimal{}, fmt.Errorf("can't convert %s to decimal: invalid decimal string: %w", str, ErrInvalidFormat)
+	}
+	for i := 0; i < len(combinedStr); i++ {
+		if combinedStr[i] < '0' || combinedStr[i] > '9' {
+			return Decimal{}, fmt.Errorf("can't convert %s to decimal: mantissa is not numeric: %w", str, ErrInvalidFormat)
+		}
 	}
 
 	// Apply exponent offset to precision
@@ -422,14 +418,28 @@ func (d Decimal) MulExact(d2 Decimal) Decimal {
 // QuoWithPrec returns d / d2 rounded to prec decimal places using roundingMode.
 // It panics if prec is negative, d2 is zero, or roundingMode is invalid.
 func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) Decimal {
+	requireNonNegativePrecision(prec)
+	validateRoundingMode(roundingMode)
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
-	if prec > d.prec && prec > d2.prec {
-		d = d.Rescale(prec, RoundUnnecessary)
-		d2 = d2.Rescale(prec, RoundUnnecessary)
-		return d.Quo(d2, roundingMode)
+	if d2.i.Sign() == 0 {
+		panic("division by zero")
 	}
-	return d.Quo(d2, roundingMode).Rescale(prec, roundingMode)
+
+	// Compute the coefficient at the requested scale directly. Rounding at
+	// the input scale first can turn a non-tie into a tie at the final scale.
+	num, den := d.i, d2.i
+	shift := prec + d2.prec - d.prec
+	if shift >= 0 {
+		num = new(big.Int).Mul(num, safeGetPrecisionMultiplier(shift))
+	} else {
+		den = new(big.Int).Mul(den, safeGetPrecisionMultiplier(-shift))
+	}
+	quo, rem := new(big.Int).QuoRem(num, den, new(big.Int))
+	if rem.Sign() != 0 {
+		applyDivisionRounding(quo, rem, den, roundingMode)
+	}
+	return Decimal{i: quo, prec: prec}
 }
 
 // Quo returns d / d2 rounded according to roundingMode.
@@ -582,7 +592,8 @@ func (d Decimal) Power(power int64) Decimal {
 // precision exactly. Callers that need the previous behavior should use
 // SqrtWithPrec(d.Precision()) explicitly.
 //
-// It returns an error wrapping ErrNegativeRoot when d is negative. The
+// It returns an error wrapping ErrNegativeRoot when d is negative, or
+// ErrNoConvergence when the iteration limit is reached. The
 // output precision is max(d.prec, defaultLogExpPrec) so that integer
 // receivers still produce meaningful results.
 func (d Decimal) Sqrt() (Decimal, error) {
@@ -598,7 +609,8 @@ func (d Decimal) Sqrt() (Decimal, error) {
 // the requested prec. Pass d.Precision() to reproduce the v0.2.x behavior of
 // matching the receiver precision.
 //
-// It returns an error wrapping ErrNegativeRoot when d is negative.
+// It returns an error wrapping ErrNegativeRoot when d is negative, or
+// ErrNoConvergence when the iteration limit is reached.
 // It panics if prec is negative.
 func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
 	return d.ApproxRootWithPrec(2, prec)
@@ -613,7 +625,8 @@ func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
 // ApproxRootWithPrec(root, d.Precision()) explicitly.
 //
 // It returns an error wrapping ErrInvalidRoot when root is not strictly
-// positive, or ErrNegativeRoot when d is negative and root is even. The
+// positive, ErrNegativeRoot when d is negative and root is even, or
+// ErrNoConvergence when the iteration limit is reached. The
 // output precision is max(d.prec, defaultLogExpPrec).
 func (d Decimal) ApproxRoot(root int64) (Decimal, error) {
 	d = initializeIfNeeded(d)
@@ -629,7 +642,8 @@ func (d Decimal) ApproxRoot(root int64) (Decimal, error) {
 // matching the receiver precision.
 //
 // It returns an error wrapping ErrInvalidRoot when root is not strictly
-// positive, or ErrNegativeRoot when d is negative and root is even.
+// positive, ErrNegativeRoot when d is negative and root is even, or
+// ErrNoConvergence when the iteration limit is reached.
 // It panics if prec is negative.
 func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 	requireNonNegativePrecision(prec)
@@ -672,7 +686,15 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 	}
 
 	rootInt := big.NewInt(root)
-	guess := NewWithAppendPrec(1, dWork.prec)
+	// If d has k integer digits (possibly k <= 0), its root is at most
+	// 10^ceil(k/root). Starting at this magnitude avoids spending the
+	// iteration budget shrinking an enormous overshoot from a fixed guess.
+	digits := int64(len(d.i.String())) - int64(d.prec)
+	exponent := digits / root
+	if digits%root > 0 {
+		exponent++
+	}
+	guess := One.Shift(int(exponent)).Rescale(dWork.prec, RoundUnnecessary)
 	delta := guess
 
 	for iter := 0; delta.Abs().i.Cmp(oneInt) > 0 && iter < maxIterations; iter++ {
@@ -687,6 +709,9 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 		delta = Decimal{i: quo, prec: dWork.prec}
 
 		guess = guess.Add(delta)
+	}
+	if delta.Abs().i.Cmp(oneInt) > 0 {
+		return Decimal{}, fmt.Errorf("ApproxRoot(%s, %d): iteration limit reached: %w", d.String(), root, ErrNoConvergence)
 	}
 	return guess.Rescale(prec, RoundHalfEven), nil
 }
@@ -746,6 +771,7 @@ func (d Decimal) RescaleDown(prec int) Decimal {
 // It panics if prec is negative or roundingMode is invalid.
 func (d Decimal) Rescale(prec int, roundingMode RoundingMode) Decimal {
 	requireNonNegativePrecision(prec)
+	validateRoundingMode(roundingMode)
 	d = initializeIfNeeded(d)
 	if d.prec == prec {
 		return d
@@ -852,8 +878,9 @@ func (d Decimal) StripTrailingZeros() Decimal {
 
 // SignificantFigures returns d rounded to figures significant figures.
 // It may round within the fractional part or to tens/hundreds on the integer part.
-// It panics if figures is not greater than 0.
+// It panics if figures is not greater than 0 or roundingMode is invalid.
 func (d Decimal) SignificantFigures(figures int, roundingMode RoundingMode) Decimal {
+	validateRoundingMode(roundingMode)
 	d = initializeIfNeeded(d)
 	if figures <= 0 {
 		panic("figures must be greater than 0")
