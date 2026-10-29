@@ -10,12 +10,16 @@ import (
 type fixedInterval struct{ lo, hi *big.Int }
 
 func ceilQuotient(a, b *big.Int) *big.Int {
-	return new(big.Int).Neg(new(big.Int).Div(new(big.Int).Neg(a), b))
+	quotient := new(big.Int).Neg(a)
+	quotient.Div(quotient, b)
+	return quotient.Neg(quotient)
 }
 
 func fractionBounds(num, den, scale *big.Int) fixedInterval {
 	n := new(big.Int).Mul(num, scale)
-	return fixedInterval{new(big.Int).Div(n, den), ceilQuotient(n, den)}
+	// Derive the upper bound before consuming the owned scaled numerator.
+	upper := ceilQuotient(n, den)
+	return fixedInterval{n.Div(n, den), upper}
 }
 
 func multiplyPositiveBounds(a, b fixedInterval, scale *big.Int) fixedInterval {
