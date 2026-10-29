@@ -315,19 +315,7 @@ func TestValueAndMarshalYAML(t *testing.T) {
 }
 
 func TestDecimalUnmarshalYAML(t *testing.T) {
-	decode := func(value any, err error) func(any) error {
-		return func(target any) error {
-			if err != nil {
-				return err
-			}
-			ptr, ok := target.(*any)
-			if !ok {
-				t.Fatalf("unexpected target type %T", target)
-			}
-			*ptr = value
-			return nil
-		}
-	}
+	decode := yamlTestDecoder
 
 	t.Run("string", func(t *testing.T) {
 		var d Decimal
@@ -540,11 +528,7 @@ func TestUnmarshalYAML_NonFiniteFloat(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var d Decimal
-			err := d.UnmarshalYAML(func(out any) error {
-				ptr := out.(*any)
-				*ptr = tc.value
-				return nil
-			})
+			err := d.UnmarshalYAML(yamlTestDecoder(tc.value, nil))
 			if err == nil {
 				t.Fatalf("expected error, got nil")
 			}

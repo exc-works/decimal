@@ -209,16 +209,7 @@ func TestNullDecimalMarshalYAML(t *testing.T) {
 }
 
 func TestNullDecimalUnmarshalYAML(t *testing.T) {
-	decode := func(value any) func(any) error {
-		return func(target any) error {
-			ptr, ok := target.(*any)
-			if !ok {
-				return nil
-			}
-			*ptr = value
-			return nil
-		}
-	}
+	decode := func(value any) func(any) error { return yamlTestDecoder(value, nil) }
 
 	tests := []struct {
 		name      string

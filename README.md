@@ -137,6 +137,17 @@ If parsing results in zero, precision is normalized to `0`.
 - `Ln() (Decimal, error)` / `LnWithPrec(prec)` (input must be > 0)
 - `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
 
+`Power` rounds only its final result to the receiver's scale: positive powers
+use `RoundHalfEven`, negative powers use `RoundUp` (away from zero). Zero to a
+negative power panics. Exact intermediates beyond the supported `MaxInt32`
+scale or coefficient bit-length bound also panic, including impractical
+`MinInt64` powers of values other than `1` and `-1`.
+
+Roots use exact integer arithmetic and exact midpoint comparisons for
+`RoundHalfEven`. Nontrivial root calculations return `ErrNoConvergence` if
+the input scale, degree, or degree times output scale exceeds `1<<17`, or if
+the integer iteration budget is exhausted.
+
 ### Precision Utilities
 
 - `RescaleDown(prec)`
@@ -216,6 +227,15 @@ If parsing results in zero, precision is normalized to `0`.
 
 - `MarshalYAML()` returns string form
 - `UnmarshalYAML()` parses scalar string/number values
+
+YAML scalars are parsed from their original text, preserving decimal digits
+instead of converting through `float64`. The goccy YAML scalar parser is a
+direct dependency used to preserve numeric tokens, quotes, and tags.
+
+Numeric scalars retain the decoder's YAML numeric interpretation, including
+octal (`012` is `10`), hexadecimal/binary prefixes, underscores, `.5`, and
+`1.`. Quoted or `!!str` scalars retain `NewFromString` semantics: `"012"` is
+decimal `12`, while `"0x10"` and `"1_000"` are invalid decimal strings.
 
 ### Text
 
@@ -357,6 +377,8 @@ Binary format:
 - first 4 bytes: big-endian `uint32` precision
 - remaining bytes: gob-encoded `big.Int`
 - trailing zeros are stripped before serialization
+- encoded and decoded precision must not exceed `1<<17`; encoding a value
+  outside that range returns `ErrInvalidPrecision` rather than truncating it
 - `decimal.PrecisionFixedSize == 4`
 
 ### Database

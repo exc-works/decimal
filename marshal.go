@@ -205,79 +205,17 @@ func (d Decimal) MarshalYAML() (any, error) {
 	return d.String(), nil
 }
 
-// UnmarshalYAML implements yaml unmarshaling by decoding scalar values into Decimal.
+// UnmarshalYAML decodes scalar text without a binary floating-point
+// intermediate. YAML null leaves the receiver unchanged.
 func (d *Decimal) UnmarshalYAML(unmarshal func(any) error) error {
-	var raw any
-	if err := unmarshal(&raw); err != nil {
+	scalar, err := decodeYAMLScalar(unmarshal)
+	if err != nil {
 		return err
 	}
-
-	if raw == nil {
-		return nil
+	if scalar.valid {
+		*d = scalar.value
 	}
-
-	switch v := raw.(type) {
-	case string:
-		parsed, err := NewFromString(v)
-		if err != nil {
-			return err
-		}
-		*d = parsed
-		return nil
-	case []byte:
-		parsed, err := NewFromString(string(v))
-		if err != nil {
-			return err
-		}
-		*d = parsed
-		return nil
-	case int:
-		*d = NewFromInt(v)
-		return nil
-	case int8:
-		*d = New(int64(v))
-		return nil
-	case int16:
-		*d = New(int64(v))
-		return nil
-	case int32:
-		*d = New(int64(v))
-		return nil
-	case int64:
-		*d = New(v)
-		return nil
-	case uint:
-		*d = NewFromUint64(uint64(v), 0)
-		return nil
-	case uint8:
-		*d = NewFromUint64(uint64(v), 0)
-		return nil
-	case uint16:
-		*d = NewFromUint64(uint64(v), 0)
-		return nil
-	case uint32:
-		*d = NewFromUint64(uint64(v), 0)
-		return nil
-	case uint64:
-		*d = NewFromUint64(v, 0)
-		return nil
-	case float32:
-		parsed, err := decimalFromFloat32(v)
-		if err != nil {
-			return err
-		}
-		*d = parsed
-		return nil
-	case float64:
-		parsed, err := decimalFromFloat64(v)
-		if err != nil {
-			return err
-		}
-		*d = parsed
-		return nil
-	default:
-		return fmt.Errorf("could not convert YAML value of type '%T' to Decimal: %w", raw, ErrUnmarshal)
-	}
+	return nil
 }
 
 // MarshalText implements encoding.TextMarshaler by returning the decimal
@@ -313,6 +251,9 @@ func (d Decimal) MarshalBinary() (data []byte, err error) {
 		return nil, nil
 	}
 	d = d.StripTrailingZeros()
+	if d.prec > maxParsedPrecision {
+		return nil, fmt.Errorf("binary precision %d exceeds maximum %d: %w", d.prec, maxParsedPrecision, ErrInvalidPrecision)
+	}
 	precBytes := make([]byte, PrecisionFixedSize)
 	binary.BigEndian.PutUint32(precBytes, uint32(d.prec))
 
@@ -331,7 +272,7 @@ func (d Decimal) MarshalBinary() (data []byte, err error) {
 // or carries a precision that exceeds maxParsedPrecision.
 func (d *Decimal) UnmarshalBinary(data []byte) error {
 	if len(data) == 0 {
-		d.i = &big.Int{}
+		*d = New(0)
 		return nil
 	}
 
@@ -347,11 +288,13 @@ func (d *Decimal) UnmarshalBinary(data []byte) error {
 		return fmt.Errorf("error decoding binary: precision %d exceeds maximum %d: %w",
 			prec, maxParsedPrecision, ErrUnmarshal)
 	}
-	d.prec = prec
-
-	// Read the big.Int.
-	d.i = new(big.Int)
-	return d.i.GobDecode(data[PrecisionFixedSize:])
+	// Decode into a temporary so malformed input leaves the old value intact.
+	coeff := new(big.Int)
+	if err := coeff.GobDecode(data[PrecisionFixedSize:]); err != nil {
+		return fmt.Errorf("error decoding binary coefficient: %w: %w", err, ErrUnmarshal)
+	}
+	*d = Decimal{i: coeff, prec: prec}
+	return nil
 }
 
 // Value implements driver.Valuer by returning the canonical decimal string form.
