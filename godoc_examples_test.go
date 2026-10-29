@@ -3,6 +3,8 @@ package decimal
 import (
 	"fmt"
 	"math/big"
+
+	yaml "github.com/goccy/go-yaml"
 )
 
 func ExampleNew() {
@@ -568,11 +570,7 @@ func ExampleDecimal_MarshalYAML() {
 
 func ExampleDecimal_UnmarshalYAML() {
 	var d Decimal
-	_ = d.UnmarshalYAML(func(target any) error {
-		p := target.(*any)
-		*p = "1.23"
-		return nil
-	})
+	_ = yaml.Unmarshal([]byte("1.23"), &d)
 	fmt.Println(d)
 	// Output:
 	// 1.23

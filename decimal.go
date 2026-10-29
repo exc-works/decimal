@@ -562,27 +562,47 @@ func (d Decimal) Remainder() (intPart *big.Int, fractionPart *big.Int) {
 	return new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
 }
 
-// Power returns d raised to the given integer power.
+// Power returns d raised to power at d's precision. Positive powers use
+// RoundHalfEven; negative powers use RoundUp (away from zero). Only the final
+// result is rounded. It panics on a negative power of zero or when an exact
+// intermediate would exceed the supported precision or integer bit length.
 func (d Decimal) Power(power int64) Decimal {
 	d = initializeIfNeeded(d)
 	if power == 0 {
 		return One.Rescale(d.prec, RoundUnnecessary)
 	}
-
-	if power < 0 {
-		// If power is negative, we will return a round up value
-		return One.Quo(d.Power(-power), RoundUp)
-	}
-
-	tmp, resultD := NewWithAppendPrec(1, d.prec), d
-	for i := power; i > 1; {
-		if i%2 != 0 {
-			tmp = tmp.MulExact(resultD)
+	if d.IsZero() {
+		if power < 0 {
+			panic("division by zero")
 		}
-		i /= 2
-		resultD = resultD.MulExact(resultD)
+		return NewWithPrec(0, d.prec)
 	}
-	return resultD.MulExact(tmp).Rescale(d.prec, RoundHalfEven)
+	// Strip redundant scale before exponentiation, including the +/-1 cases.
+	base := d.StripTrailingZeros()
+	magnitude := uint64(power)
+	if power < 0 {
+		magnitude = uint64(-(power + 1)) + 1
+	}
+	if base.prec == 0 && new(big.Int).Abs(base.i).Cmp(oneInt) == 0 {
+		result := One
+		if base.IsNegative() && magnitude%2 != 0 {
+			result = result.Neg()
+		}
+		return result.Rescale(d.prec, RoundUnnecessary)
+	}
+	// MulExact already limits intermediate scales to MaxInt32. Check before
+	// exponentiation as well, so MinInt64 cannot wrap or request an impossible
+	// big.Int allocation. Apply the same bound to the coefficient's bit length.
+	size := max(1, base.prec, base.i.BitLen())
+	if magnitude > uint64(stdmath.MaxInt32)/uint64(size) {
+		panic("power overflow")
+	}
+	coeff := new(big.Int).Exp(base.i, new(big.Int).SetUint64(magnitude), nil)
+	exact := Decimal{i: coeff, prec: base.prec * int(magnitude)}
+	if power < 0 {
+		return One.QuoWithPrec(exact, d.prec, RoundUp)
+	}
+	return exact.Rescale(d.prec, RoundHalfEven)
 }
 
 // Sqrt returns an approximate square root of d.
@@ -593,7 +613,7 @@ func (d Decimal) Power(power int64) Decimal {
 // SqrtWithPrec(d.Precision()) explicitly.
 //
 // It returns an error wrapping ErrNegativeRoot when d is negative, or
-// ErrNoConvergence when the iteration limit is reached. The
+// ErrNoConvergence when the exact calculation exceeds its resource budget. The
 // output precision is max(d.prec, defaultLogExpPrec) so that integer
 // receivers still produce meaningful results.
 func (d Decimal) Sqrt() (Decimal, error) {
@@ -604,13 +624,11 @@ func (d Decimal) Sqrt() (Decimal, error) {
 // SqrtWithPrec returns an approximate square root of d rescaled to prec
 // decimal places using RoundHalfEven.
 //
-// Note: since v0.3.0 callers that pass prec smaller than 30 still observe a
-// lifted working precision internally, but the final result is rescaled to
-// the requested prec. Pass d.Precision() to reproduce the v0.2.x behavior of
-// matching the receiver precision.
+// The result is rounded once using an exact integer comparison, including
+// halfway cases. Pass d.Precision() to match the receiver precision.
 //
 // It returns an error wrapping ErrNegativeRoot when d is negative, or
-// ErrNoConvergence when the iteration limit is reached.
+// ErrNoConvergence when the exact calculation exceeds its resource budget.
 // It panics if prec is negative.
 func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
 	return d.ApproxRootWithPrec(2, prec)
@@ -626,7 +644,7 @@ func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
 //
 // It returns an error wrapping ErrInvalidRoot when root is not strictly
 // positive, ErrNegativeRoot when d is negative and root is even, or
-// ErrNoConvergence when the iteration limit is reached. The
+// ErrNoConvergence when the exact calculation exceeds its resource budget. The
 // output precision is max(d.prec, defaultLogExpPrec).
 func (d Decimal) ApproxRoot(root int64) (Decimal, error) {
 	d = initializeIfNeeded(d)
@@ -636,14 +654,12 @@ func (d Decimal) ApproxRoot(root int64) (Decimal, error) {
 // ApproxRootWithPrec returns an approximate integer-th root of d rescaled to
 // prec decimal places using RoundHalfEven.
 //
-// Note: since v0.3.0 callers that pass prec smaller than 30 still observe a
-// lifted working precision internally, but the final result is rescaled to
-// the requested prec. Pass d.Precision() to reproduce the v0.2.x behavior of
-// matching the receiver precision.
+// The result is rounded once using an exact integer comparison, including
+// halfway cases. Pass d.Precision() to match the receiver precision.
 //
 // It returns an error wrapping ErrInvalidRoot when root is not strictly
 // positive, ErrNegativeRoot when d is negative and root is even, or
-// ErrNoConvergence when the iteration limit is reached.
+// ErrNoConvergence when the exact calculation exceeds its resource budget.
 // It panics if prec is negative.
 func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 	requireNonNegativePrecision(prec)
@@ -673,47 +689,7 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 		return NewWithAppendPrec(1, prec), nil
 	}
 
-	// Compute at a precision that absorbs rounding through the iteration
-	// and rescale the input up (losslessly) when needed so intermediate
-	// deltas have room to represent fractional digits.
-	work := prec + 6
-	if work < defaultLogExpPrec {
-		work = defaultLogExpPrec
-	}
-	dWork := d
-	if d.prec < work {
-		dWork = d.Rescale(work, RoundHalfEven)
-	}
-
-	rootInt := big.NewInt(root)
-	// If d has k integer digits (possibly k <= 0), its root is at most
-	// 10^ceil(k/root). Starting at this magnitude avoids spending the
-	// iteration budget shrinking an enormous overshoot from a fixed guess.
-	digits := int64(len(d.i.String())) - int64(d.prec)
-	exponent := digits / root
-	if digits%root > 0 {
-		exponent++
-	}
-	guess := One.Shift(int(exponent)).Rescale(dWork.prec, RoundUnnecessary)
-	delta := guess
-
-	for iter := 0; delta.Abs().i.Cmp(oneInt) > 0 && iter < maxIterations; iter++ {
-		prev := guess.Power(root - 1)
-		if prev.IsZero() {
-			prev = One
-		}
-		delta = dWork.Quo(prev, RoundHalfEven)
-		delta = delta.Sub(guess)
-
-		quo := new(big.Int).Quo(delta.i, rootInt)
-		delta = Decimal{i: quo, prec: dWork.prec}
-
-		guess = guess.Add(delta)
-	}
-	if delta.Abs().i.Cmp(oneInt) > 0 {
-		return Decimal{}, fmt.Errorf("ApproxRoot(%s, %d): iteration limit reached: %w", d.String(), root, ErrNoConvergence)
-	}
-	return guess.Rescale(prec, RoundHalfEven), nil
+	return roundedIntegerRoot(d, root, prec)
 }
 
 // Log2 returns an approximate log base 2 of d via iterative refinement.
@@ -828,6 +804,9 @@ func (d Decimal) Shift(places int) Decimal {
 // but with any trailing zeros removed from the representation.
 func (d Decimal) StripTrailingZeros() Decimal {
 	d = initializeIfNeeded(d)
+	if d.i.Sign() == 0 {
+		return Zero
+	}
 	if d.prec == 0 {
 		return d
 	}

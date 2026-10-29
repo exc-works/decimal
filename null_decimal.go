@@ -79,26 +79,11 @@ func (n NullDecimal) MarshalYAML() (any, error) {
 // UnmarshalYAML implements yaml unmarshaling. A nil scalar sets Valid to false;
 // other scalars are delegated to Decimal.UnmarshalYAML.
 func (n *NullDecimal) UnmarshalYAML(unmarshal func(any) error) error {
-	var raw any
-	if err := unmarshal(&raw); err != nil {
+	scalar, err := decodeYAMLScalar(unmarshal)
+	if err != nil {
 		return err
 	}
-	if raw == nil {
-		n.Decimal = Decimal{}
-		n.Valid = false
-		return nil
-	}
-	if err := n.Decimal.UnmarshalYAML(func(target any) error {
-		ptr, ok := target.(*any)
-		if !ok {
-			return unmarshal(target)
-		}
-		*ptr = raw
-		return nil
-	}); err != nil {
-		return err
-	}
-	n.Valid = true
+	*n = NullDecimal{Decimal: scalar.value, Valid: scalar.valid}
 	return nil
 }
 

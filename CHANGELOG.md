@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- Negative integer powers retain the exact denominator until final rounding
+  and handle `MinInt64` without signed overflow or infinite recursion.
+- Roots use exact integer roots and midpoint comparisons, fixing HalfEven
+  rounding of exact ties and false convergence failures on ordinary inputs.
+- YAML decoding preserves scalar numeric text for both Decimal and
+  NullDecimal instead of silently passing it through binary floating point.
+- Binary encoding rejects unsupported scales before conversion to uint32;
+  decoding malformed coefficients preserves the receiver and wraps ErrUnmarshal.
 - `QuoWithPrec` now rounds the exact division directly to the requested
   precision, avoiding incorrect results caused by rounding twice (for example,
   `16.0 / 11` at precision 0 with `RoundHalfEven` now returns `1`, not `2`).
