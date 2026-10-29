@@ -26,6 +26,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   driver from compiled dependencies, but validator dependencies remain.
 - Documented project-local build caches and a fresh-cache retry for race
   toolchain build failures; CI uses a runner-local build cache.
+- Configure workflow caches in a runner step instead of using the unavailable
+  `runner` context in job-level `env`. CI now validates both workflows with
+  actionlint, including expression context availability.
 
 ## [0.7.0] - 2026-06-02
 

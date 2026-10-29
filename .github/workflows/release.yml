@@ -13,12 +13,12 @@ jobs:
     name: Publish Release
     runs-on: ubuntu-latest
 
-    env:
-      GOCACHE: ${{ runner.temp }}/decimal-go-build
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Configure Go build cache
+        run: echo "GOCACHE=$RUNNER_TEMP/decimal-go-build" >> "$GITHUB_ENV"
 
       - name: Setup Go
         uses: actions/setup-go@v5
