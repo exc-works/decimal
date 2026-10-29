@@ -48,6 +48,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   `runner` context in job-level `env`. CI now validates both workflows with
   actionlint, including expression context availability.
 
+### Performance
+- Reuse scratch integers and interval buffers throughout logarithm and
+  exponential series and precision refinement. Normalize logarithm inputs
+  once per calculation and share ln(2) bounds within each precision attempt.
+  Operand immutability and independently owned result bounds are preserved.
+
 ## [0.7.0] - 2026-06-02
 
 ### Removed

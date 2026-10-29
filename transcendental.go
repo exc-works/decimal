@@ -10,7 +10,12 @@ import (
 type fixedInterval struct{ lo, hi *big.Int }
 
 func ceilQuotient(a, b *big.Int) *big.Int {
-	quotient := new(big.Int).Neg(a)
+	return ceilQuotientTo(new(big.Int), a, b)
+}
+
+// ceilQuotientTo may overwrite a when the caller owns it. b is positive.
+func ceilQuotientTo(quotient, a, b *big.Int) *big.Int {
+	quotient.Neg(a)
 	quotient.Div(quotient, b)
 	return quotient.Neg(quotient)
 }
@@ -23,27 +28,34 @@ func fractionBounds(num, den, scale *big.Int) fixedInterval {
 }
 
 func multiplyPositiveBounds(a, b fixedInterval, scale *big.Int) fixedInterval {
-	return fixedInterval{
-		new(big.Int).Div(new(big.Int).Mul(a.lo, b.lo), scale),
-		ceilQuotient(new(big.Int).Mul(a.hi, b.hi), scale),
-	}
+	result := fixedInterval{new(big.Int), new(big.Int)}
+	multiplyPositiveBoundsTo(result, a, b, scale)
+	return result
+}
+
+// Destination bounds are independently owned and do not alias the operands.
+// Series loops alternate destinations so both objects and limb buffers can
+// be reused without overwriting multiplication inputs.
+func multiplyPositiveBoundsTo(dst, a, b fixedInterval, scale *big.Int) {
+	dst.lo.Mul(a.lo, b.lo).Div(dst.lo, scale)
+	dst.hi.Mul(a.hi, b.hi)
+	ceilQuotientTo(dst.hi, dst.hi, scale)
 }
 
 func divideBounds(a, b fixedInterval, scale *big.Int) fixedInterval {
 	// Denominators in logarithms and exponentials are strictly positive.
-	var lo, hi *big.Int
-	for _, numerator := range []*big.Int{a.lo, a.hi} {
-		for _, denominator := range []*big.Int{b.lo, b.hi} {
-			n := new(big.Int).Mul(numerator, scale)
-			lower, upper := new(big.Int).Div(n, denominator), ceilQuotient(n, denominator)
-			if lo == nil || lower.Cmp(lo) < 0 {
-				lo = lower
-			}
-			if hi == nil || upper.Cmp(hi) > 0 {
-				hi = upper
-			}
-		}
+	// Division is increasing in the numerator; its denominator direction
+	// depends on the numerator's sign. Select the two extreme corners directly.
+	lowerDen, upperDen := b.lo, b.lo
+	if a.lo.Sign() >= 0 {
+		lowerDen = b.hi
+	} else if a.hi.Sign() <= 0 {
+		upperDen = b.hi
 	}
+	lo := new(big.Int).Mul(a.lo, scale)
+	lo.Div(lo, lowerDen)
+	hi := new(big.Int).Mul(a.hi, scale)
+	ceilQuotientTo(hi, hi, upperDen)
 	return fixedInterval{lo, hi}
 }
 
@@ -52,7 +64,8 @@ func multiplyBoundsByInt(a fixedInterval, k int64) fixedInterval {
 	if k < 0 {
 		lower, upper = upper, lower
 	}
-	return fixedInterval{new(big.Int).Mul(lower, big.NewInt(k)), new(big.Int).Mul(upper, big.NewInt(k))}
+	multiplier := big.NewInt(k)
+	return fixedInterval{new(big.Int).Mul(lower, multiplier), new(big.Int).Mul(upper, multiplier)}
 }
 
 // logMantissaBounds evaluates ln(m) = 2 sum z^(2j+1)/(2j+1), where
@@ -63,20 +76,33 @@ func logMantissaBounds(num, den, scale *big.Int, maxTerms int) (fixedInterval, e
 	if num.Cmp(den) == 0 {
 		return fixedInterval{new(big.Int), new(big.Int)}, nil
 	}
-	z := fractionBounds(new(big.Int).Sub(num, den), new(big.Int).Add(num, den), scale)
+	var numerator, denominator big.Int
+	numerator.Sub(num, den)
+	denominator.Add(num, den)
+	z := fractionBounds(&numerator, &denominator, scale)
 	zSquared := multiplyPositiveBounds(z, z, scale)
 	power := z
+	next := fixedInterval{new(big.Int), new(big.Int)}
 	sumLo, sumHi := new(big.Int), new(big.Int)
+	var odd, lowerTerm, upperTerm, tail, two, three big.Int
+	two.SetInt64(2)
+	three.SetInt64(3)
 	for j := 0; j < maxTerms; j++ {
-		odd := big.NewInt(int64(2*j + 1))
-		sumLo.Add(sumLo, new(big.Int).Div(power.lo, odd))
-		sumHi.Add(sumHi, ceilQuotient(power.hi, odd))
-		next := multiplyPositiveBounds(power, zSquared, scale)
-		if next.hi.Cmp(big.NewInt(2)) <= 0 {
-			tail := ceilQuotient(new(big.Int).Mul(next.hi, big.NewInt(3)), big.NewInt(int64(2*j+3)))
-			return fixedInterval{new(big.Int).Lsh(sumLo, 1), new(big.Int).Add(new(big.Int).Lsh(sumHi, 1), tail)}, nil
+		odd.SetInt64(int64(2*j + 1))
+		lowerTerm.Div(power.lo, &odd)
+		ceilQuotientTo(&upperTerm, power.hi, &odd)
+		sumLo.Add(sumLo, &lowerTerm)
+		sumHi.Add(sumHi, &upperTerm)
+		multiplyPositiveBoundsTo(next, power, zSquared, scale)
+		if next.hi.Cmp(&two) <= 0 {
+			odd.SetInt64(int64(2*j + 3))
+			tail.Mul(next.hi, &three)
+			ceilQuotientTo(&tail, &tail, &odd)
+			sumLo.Lsh(sumLo, 1)
+			sumHi.Lsh(sumHi, 1).Add(sumHi, &tail)
+			return fixedInterval{sumLo, sumHi}, nil
 		}
-		power = next
+		power, next = next, power
 	}
 	return fixedInterval{}, fmt.Errorf("logarithm series budget exhausted: %w", ErrNoConvergence)
 }
@@ -97,34 +123,54 @@ func binaryMantissa(num, den *big.Int) (*big.Int, *big.Int, int64) {
 	return n, q, k
 }
 
-func naturalLogBounds(r *big.Rat, scale *big.Int, maxTerms int) (fixedInterval, error) {
-	num, den, k := binaryMantissa(r.Num(), r.Denom())
-	mantissa, err := logMantissaBounds(num, den, scale, maxTerms)
+type logArgument struct {
+	num, den *big.Int
+	exponent int64
+}
+
+func naturalLogBounds(argument logArgument, scale *big.Int, maxTerms int, ln2 *fixedInterval) (fixedInterval, error) {
+	mantissa, err := logMantissaBounds(argument.num, argument.den, scale, maxTerms)
 	if err != nil {
 		return fixedInterval{}, err
 	}
-	ln2, err := logMantissaBounds(big.NewInt(2), oneInt, scale, maxTerms)
-	if err != nil {
-		return fixedInterval{}, err
+	if argument.exponent == 0 {
+		return mantissa, nil
 	}
-	exponent := multiplyBoundsByInt(ln2, k)
-	return fixedInterval{new(big.Int).Add(mantissa.lo, exponent.lo), new(big.Int).Add(mantissa.hi, exponent.hi)}, nil
+	if ln2.lo == nil {
+		var two big.Int
+		two.SetInt64(2)
+		*ln2, err = logMantissaBounds(&two, oneInt, scale, maxTerms)
+		if err != nil {
+			return fixedInterval{}, err
+		}
+	}
+	exponent := multiplyBoundsByInt(*ln2, argument.exponent)
+	mantissa.lo.Add(mantissa.lo, exponent.lo)
+	mantissa.hi.Add(mantissa.hi, exponent.hi)
+	return mantissa, nil
 }
 
 // roundBounds succeeds only if every real value in the enclosure has the
 // same RoundHalfEven result at the requested decimal scale.
 func roundBounds(value fixedInterval, scale *big.Int, prec int) (Decimal, bool) {
 	multiplier := safeGetPrecisionMultiplier(prec)
-	round := func(bound *big.Int) *big.Int {
-		n := new(big.Int).Mul(bound, multiplier)
-		q, r := new(big.Int).QuoRem(n, scale, new(big.Int))
-		if r.Sign() != 0 {
-			applyDivisionRounding(q, r, scale, RoundHalfEven)
+	lo := new(big.Int)
+	var hi, remainder big.Int
+	ok := roundBoundsTo(lo, &hi, &remainder, value, scale, multiplier)
+	return Decimal{i: lo, prec: prec}, ok
+}
+
+func roundBoundsTo(lo, hi, remainder *big.Int, value fixedInterval, scale, multiplier *big.Int) bool {
+	round := func(quotient, bound *big.Int) {
+		quotient.Mul(bound, multiplier)
+		quotient.QuoRem(quotient, scale, remainder)
+		if remainder.Sign() != 0 {
+			applyDivisionRounding(quotient, remainder, scale, RoundHalfEven)
 		}
-		return q
 	}
-	lo, hi := round(value.lo), round(value.hi)
-	return Decimal{i: lo, prec: prec}, lo.Cmp(hi) == 0
+	round(lo, value.lo)
+	round(hi, value.hi)
+	return lo.Cmp(hi) == 0
 }
 
 // 3.322 is a rational upper bound for log2(10); no floating-point estimate
@@ -135,18 +181,21 @@ func certifyDecimal(prec, extraDigits int, evaluate func(*big.Int, int) (fixedIn
 	if prec > maxParsedPrecision || extraDigits > maxParsedPrecision-prec {
 		return Decimal{}, fmt.Errorf("transcendental precision budget exceeded: %w", ErrNoConvergence)
 	}
+	multiplier := safeGetPrecisionMultiplier(prec)
+	coefficient := new(big.Int)
+	var scale, upper, remainder big.Int
 	for guard := 64; guard <= 8192; guard *= 2 {
 		bits := decimalBits(prec+extraDigits) + guard
 		if bits > decimalBits(maxParsedPrecision) {
 			break
 		}
-		scale := new(big.Int).Lsh(big.NewInt(1), uint(bits))
-		bounds, err := evaluate(scale, bits)
+		scale.SetInt64(1).Lsh(&scale, uint(bits))
+		bounds, err := evaluate(&scale, bits)
 		if err != nil {
 			return Decimal{}, err
 		}
-		if result, ok := roundBounds(bounds, scale, prec); ok {
-			return result, nil
+		if roundBoundsTo(coefficient, &upper, &remainder, bounds, &scale, multiplier) {
+			return Decimal{i: coefficient, prec: prec}, nil
 		}
 	}
 	return Decimal{}, fmt.Errorf("cannot certify rounding within precision budget: %w", ErrNoConvergence)
@@ -187,12 +236,26 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 			return NewWithAppendPrec(int64(len(num)-len(den)), prec), nil
 		}
 	}
+	// Normalization is independent of working precision, so retain its owned
+	// read-only integers across all certification attempts.
+	num, den, exponent := binaryMantissa(r.Num(), r.Denom())
+	argument := logArgument{num, den, exponent}
+	var baseArgument logArgument
+	if base != 0 {
+		var baseInteger big.Int
+		baseInteger.SetInt64(int64(base))
+		num, den, exponent := binaryMantissa(&baseInteger, oneInt)
+		baseArgument = logArgument{num, den, exponent}
+	}
 	return certifyDecimal(prec, 0, func(scale *big.Int, bits int) (fixedInterval, error) {
-		value, err := naturalLogBounds(r, scale, bits)
+		// Each precision attempt computes ln(2) at most once, sharing the
+		// read-only bounds between the argument and base logarithms.
+		var ln2 fixedInterval
+		value, err := naturalLogBounds(argument, scale, bits, &ln2)
 		if err != nil || base == 0 {
 			return value, err
 		}
-		denominator, err := naturalLogBounds(new(big.Rat).SetInt64(int64(base)), scale, bits)
+		denominator, err := naturalLogBounds(baseArgument, scale, bits, &ln2)
 		if err != nil {
 			return fixedInterval{}, err
 		}
@@ -204,16 +267,27 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 // term n is <= 2*term(n+1), because subsequent term ratios are <= 1/4.
 func expSeriesBounds(x fixedInterval, scale *big.Int, maxTerms int) (fixedInterval, error) {
 	term := fixedInterval{new(big.Int).Set(scale), new(big.Int).Set(scale)}
+	product := fixedInterval{new(big.Int), new(big.Int)}
 	lo, hi := new(big.Int).Set(scale), new(big.Int).Set(scale)
+	var divisor, nextUpper, two big.Int
+	two.SetInt64(2)
 	for n := 1; n <= maxTerms; n++ {
-		product := multiplyPositiveBounds(term, x, scale)
-		term = fixedInterval{new(big.Int).Div(product.lo, big.NewInt(int64(n))), ceilQuotient(product.hi, big.NewInt(int64(n)))}
+		multiplyPositiveBoundsTo(product, term, x, scale)
+		divisor.SetInt64(int64(n))
+		product.lo.Div(product.lo, &divisor)
+		ceilQuotientTo(product.hi, product.hi, &divisor)
+		term, product = product, term
 		lo.Add(lo, term.lo)
 		hi.Add(hi, term.hi)
-		next := multiplyPositiveBounds(term, x, scale)
-		nextUpper := ceilQuotient(next.hi, big.NewInt(int64(n+1)))
-		if nextUpper.Cmp(big.NewInt(2)) <= 0 {
-			return fixedInterval{lo, new(big.Int).Add(hi, new(big.Int).Lsh(nextUpper, 1))}, nil
+		// Only the upper next-term bound is needed for the remainder.
+		nextUpper.Mul(term.hi, x.hi)
+		ceilQuotientTo(&nextUpper, &nextUpper, scale)
+		divisor.SetInt64(int64(n + 1))
+		ceilQuotientTo(&nextUpper, &nextUpper, &divisor)
+		if nextUpper.Cmp(&two) <= 0 {
+			nextUpper.Lsh(&nextUpper, 1)
+			hi.Add(hi, &nextUpper)
+			return fixedInterval{lo, hi}, nil
 		}
 	}
 	return fixedInterval{}, fmt.Errorf("exponential series budget exhausted: %w", ErrNoConvergence)
@@ -229,7 +303,8 @@ func certifiedExp(d Decimal, prec int) (Decimal, error) {
 		return NewWithAppendPrec(1, prec), nil
 	}
 	negative := d.IsNegative()
-	r := d.Abs().BigRat()
+	r := d.BigRat()
+	r.Abs(r)
 	// Since e > 2 and 16^(prec+1) > 2*10^prec, this certifies rounding to
 	// zero for very negative inputs without constructing an enormous e^|x|.
 	if negative && r.Cmp(new(big.Rat).SetInt64(int64(4*(prec+1)))) >= 0 {
@@ -238,7 +313,8 @@ func certifiedExp(d Decimal, prec int) (Decimal, error) {
 	// e < 10 implies e^|x| < 10^ceil(|x|). Reserve these integer digits as
 	// additional working precision; final acceptance still requires enclosure
 	// certification, including every argument-reduction squaring error.
-	digits := ceilQuotient(r.Num(), r.Denom())
+	var digits big.Int
+	ceilQuotientTo(&digits, r.Num(), r.Denom())
 	if !digits.IsInt64() || digits.Int64() > maxParsedPrecision {
 		return Decimal{}, fmt.Errorf("exponential result exceeds precision budget: %w", ErrNoConvergence)
 	}
@@ -255,8 +331,12 @@ func certifiedExp(d Decimal, prec int) (Decimal, error) {
 		if err != nil {
 			return fixedInterval{}, err
 		}
-		for range reductions {
-			value = multiplyPositiveBounds(value, value, scale)
+		if reductions > 0 {
+			scratch := fixedInterval{new(big.Int), new(big.Int)}
+			for range reductions {
+				multiplyPositiveBoundsTo(scratch, value, value, scale)
+				value, scratch = scratch, value
+			}
 		}
 		if negative {
 			value = divideBounds(fixedInterval{scale, scale}, value, scale)
