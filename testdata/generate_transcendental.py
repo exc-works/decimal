@@ -47,6 +47,30 @@ with localcontext() as context:
         ("exp", "1000", 0),
     ]:
         add(operation, text, precision)
+    # Exercise exact reciprocal normalization and both sides of one.
+    for text in ["0.9999999999999999999999999", "0.999", "0.00001", "0.51"]:
+        for operation in ["ln", "log2", "log10"]:
+            for precision in [0, 18, 100]:
+                add(operation, text, precision)
+    # Both sides of dyadic boundaries and the exact mantissa-choice threshold.
+    for exponent in [-3, -2, -1, 1, 2]:
+        center = Decimal(2) ** exponent
+        for direction in [-1, 1]:
+            text = str(center + direction * Decimal("1e-100"))
+            for operation in ["ln", "log2", "log10"]:
+                add(operation, text, 100)
+    for exponent in [-3, 0, 3]:
+        threshold = Decimal(2).sqrt() * (Decimal(2) ** exponent)
+        for rounding in [ROUND_FLOOR, ROUND_CEILING]:
+            text = str(threshold.quantize(Decimal("1e-100"), rounding=rounding))
+            for operation in ["ln", "log2", "log10"]:
+                add(operation, text, 100)
+    for direction in [-1, 1]:
+        add("ln", str(Decimal("0.25") + direction * Decimal("1e-1100")), 1000)
+    for precision in [0, 1, 18, 100]:
+        for offset in ["-0.0000000001", "0", "0.0000000001"]:
+            threshold = -Decimal(5) * (precision + 1) / 2
+            add("exp", str(threshold + Decimal(offset)), precision)
     for operation, threshold in [
         ("exp", Decimal("1.5").ln()),
         ("ln", Decimal("0.5").exp()),
