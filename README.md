@@ -164,9 +164,14 @@ Guard precision doubles from 64 to 8192 bits, allowing at most eight attempts;
 these limits are this library's resource policy, not universal Ziv parameters.
 
 Transcendental input scales and working precision are bounded by `1<<17`.
-Inputs below one use `ln(x) = -ln(1/x)` with an exact rational reciprocal,
-avoiding slow cancellation near one. Binary interval scaling uses directed
-shifts; both endpoint rounding and series tail bounds remain certified.
+Logarithms choose between `ln(x)` and `-ln(1/x)` using exact binary
+normalization. The choice first avoids an extra `ln(2)` evaluation and then
+prefers the smaller mantissa using bounded integer comparisons against `m²=2`.
+Nearly equal costs keep the original direction; the complete input is always
+used for the certified interval evaluation. This keeps inputs near one and
+either side of powers of two efficient without expensive full-input squares.
+Binary interval scaling uses directed shifts; both endpoint rounding and series
+tail bounds remain certified.
 Sufficiently negative exponentials certify zero from a rational bound before
 constructing large positive intermediates.
 

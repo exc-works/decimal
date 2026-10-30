@@ -65,6 +65,112 @@ func TestLogarithmsNearOne(t *testing.T) {
 	}
 }
 
+func TestLogReductionIdentityAndSeriesCost(t *testing.T) {
+	rng := rand.New(rand.NewPCG(511, 73))
+	for range 300 {
+		var numeratorBytes, denominatorBytes [64]byte
+		for i := range numeratorBytes {
+			numeratorBytes[i] = byte(rng.Uint64())
+			denominatorBytes[i] = byte(rng.Uint64())
+		}
+		num := new(big.Int).SetBytes(numeratorBytes[:])
+		den := new(big.Int).SetBytes(denominatorBytes[:])
+		// Vary binary exponents independently of the significand digits.
+		num.Lsh(num, uint(rng.IntN(100)))
+		den.Lsh(den, uint(rng.IntN(100)))
+		r := new(big.Rat).SetFrac(num, den)
+		beforeNum, beforeDen := new(big.Int).Set(num), new(big.Int).Set(den)
+		for _, base := range []int{0, 2, 10} {
+			argument, reciprocal := reduceLogArgument(num, den, base)
+			mantissa := new(big.Rat).SetFrac(argument.num, argument.den)
+			if mantissa.Cmp(big.NewRat(1, 1)) < 0 || mantissa.Cmp(big.NewRat(2, 1)) >= 0 {
+				t.Fatal("mantissa outside [1,2)")
+			}
+			value := new(big.Rat).Set(mantissa)
+			power := new(big.Int).Lsh(big.NewInt(1), uint(absLogExponent(argument.exponent)))
+			if argument.exponent >= 0 {
+				value.Mul(value, new(big.Rat).SetInt(power))
+			} else {
+				value.Quo(value, new(big.Rat).SetInt(power))
+			}
+			if reciprocal {
+				value.Inv(value)
+			}
+			if value.Cmp(r) != 0 {
+				t.Fatal("log reduction changed the exact argument")
+			}
+			// Construct both candidates independently. Prefer avoiding a new
+			// ln(2) evaluation, then minimize the positive atanh series input.
+			for _, inverse := range []bool{false, true} {
+				n, d := num, den
+				if inverse {
+					n, d = d, n
+				}
+				n, d, exponent := binaryMantissa(n, d)
+				chosenConstant := base == 0 && argument.exponent != 0
+				otherConstant := base == 0 && exponent != 0
+				if chosenConstant && !otherConstant {
+					t.Fatal("unnecessary ln(2) evaluation")
+				}
+				otherMantissa := new(big.Rat).SetFrac(n, d)
+				// A 64-bit lower bound can leave directions indistinguishable
+				// near sqrt(2). The chosen mantissa remains within 2^-60 of
+				// the better ratio; exact output accuracy does not depend on it.
+				allowance := new(big.Rat).Add(big.NewRat(1, 1), new(big.Rat).SetFrac(oneInt, new(big.Int).Lsh(big.NewInt(1), 60)))
+				if chosenConstant == otherConstant && new(big.Rat).Quo(mantissa, otherMantissa).Cmp(allowance) > 0 {
+					t.Fatal("slower mantissa selected beyond the bounded decision tolerance")
+				}
+			}
+			argument.num.SetInt64(91)
+			argument.den.SetInt64(93)
+			if num.Cmp(beforeNum) != 0 || den.Cmp(beforeDen) != 0 {
+				t.Fatal("reduction mutated caller inputs")
+			}
+		}
+	}
+}
+
+func BenchmarkLogReductionLargeInput(b *testing.B) {
+	input := MustFromString("0.25").Add(NewWithPrec(1, 100000))
+	for _, prec := range []int{0, 18} {
+		b.Run(fmt.Sprintf("scale100000/prec%d", prec), func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				var err error
+				benchDecimalResult, err = input.LnWithPrec(prec)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func absLogExponent(exponent int64) int64 {
+	if exponent < 0 {
+		return -exponent
+	}
+	return exponent
+}
+
+func TestLogReductionUnitBinadesAndPowers(t *testing.T) {
+	for _, tc := range []struct {
+		input      string
+		reciprocal bool
+	}{
+		{"0.25", false}, {"0.250000000000000000001", false},
+		{"0.249999999999999999999", true}, {"0.125000000000000000001", false},
+		{"0.6", true}, {"0.999999999999999999999", true},
+		{"1.000000000000000000001", false}, {"1.9", false},
+	} {
+		r := MustFromString(tc.input).BigRat()
+		_, reciprocal := reduceLogArgument(r.Num(), r.Denom(), 0)
+		if reciprocal != tc.reciprocal {
+			t.Fatalf("Ln reduction for %s: reciprocal=%v", tc.input, reciprocal)
+		}
+	}
+}
+
 func TestNegativeExponentialCertifiedZero(t *testing.T) {
 	for _, tc := range []struct {
 		x    int64
@@ -82,7 +188,15 @@ func BenchmarkOptimizedLogarithms(b *testing.B) {
 		for _, tc := range []struct {
 			name  string
 			input Decimal
-		}{{"three", New(3)}, {"below-one", One.Sub(NewWithPrec(1, prec+100))}, {"above-one", One.Add(NewWithPrec(1, prec+100))}} {
+		}{
+			{"three", New(3)},
+			{"below-one", One.Sub(NewWithPrec(1, prec+100))},
+			{"above-one", One.Add(NewWithPrec(1, prec+100))},
+			{"above-quarter", MustFromString("0.25").Add(NewWithPrec(1, prec+100))},
+			{"below-quarter", MustFromString("0.25").Sub(NewWithPrec(1, prec+100))},
+			{"above-eighth", MustFromString("0.125").Add(NewWithPrec(1, prec+100))},
+			{"below-eighth", MustFromString("0.125").Sub(NewWithPrec(1, prec+100))},
+		} {
 			b.Run(fmt.Sprintf("%s/%d", tc.name, prec), func(b *testing.B) {
 				b.ReportAllocs()
 				for b.Loop() {
@@ -93,6 +207,46 @@ func BenchmarkOptimizedLogarithms(b *testing.B) {
 					}
 				}
 			})
+		}
+	}
+}
+
+func TestLogReductionPrefixThreshold(t *testing.T) {
+	allowance := new(big.Rat).Add(big.NewRat(1, 1), new(big.Rat).SetFrac(big.NewInt(1), new(big.Int).Lsh(big.NewInt(1), 60)))
+	for _, bits := range []uint{63, 64, 65, 100, 1000, 20000} {
+		den := new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), bits), big.NewInt(71))
+		twiceSquared := new(big.Int).Mul(den, den)
+		twiceSquared.Lsh(twiceSquared, 1)
+		center := new(big.Int).Sqrt(twiceSquared)
+		delta := big.NewInt(1)
+		if bits > 64 {
+			delta.Lsh(delta, bits-64)
+		}
+		for _, sign := range []int64{-1, 0, 1} {
+			num := new(big.Int).Add(center, new(big.Int).Mul(delta, big.NewInt(sign)))
+			beforeNum, beforeDen := new(big.Int).Set(num), new(big.Int).Set(den)
+			argument, inverse := reduceLogArgument(num, den, 2)
+			chosen := new(big.Rat).SetFrac(argument.num, argument.den)
+			original := new(big.Rat).SetFrac(num, den)
+			other := new(big.Rat).Quo(big.NewRat(2, 1), original)
+			if inverse {
+				if new(big.Int).Mul(num, num).Cmp(twiceSquared) <= 0 {
+					t.Fatal("false positive inverse")
+				}
+				original, other = other, original
+			}
+			if chosen.Cmp(original) != 0 {
+				t.Fatal("truncated enclosure coefficients")
+			}
+			ratio := new(big.Rat).Quo(chosen, other)
+			if ratio.Cmp(allowance) > 0 {
+				t.Fatalf("cost bound exceeds tolerance at %d bits", bits)
+			}
+			argument.num.SetInt64(1)
+			argument.den.SetInt64(1)
+			if num.Cmp(beforeNum) != 0 || den.Cmp(beforeDen) != 0 {
+				t.Fatal("input alias")
+			}
 		}
 	}
 }

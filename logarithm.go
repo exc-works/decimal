@@ -45,16 +45,7 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 	}
 	// Normalization is independent of working precision, so retain its owned
 	// read-only integers across all certification attempts.
-	// For x<1, ln(x)=-ln(1/x). Taking the exact rational reciprocal keeps
-	// inputs just below 1 near the series origin, rather than computing
-	// ln(m)-ln(2) with m nearly 2. No decimal reciprocal is rounded here.
-	reciprocal := r.Num().Cmp(r.Denom()) < 0
-	numerator, denominator := r.Num(), r.Denom()
-	if reciprocal {
-		numerator, denominator = denominator, numerator
-	}
-	num, den, exponent := binaryMantissa(numerator, denominator)
-	argument := logArgument{num, den, exponent}
+	argument, reciprocal := reduceLogArgument(r.Num(), r.Denom(), base)
 	var baseArgument logArgument
 	if base != 0 {
 		var baseInteger big.Int
@@ -83,6 +74,53 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 		}
 		return divideBounds(value, denominator, scale), nil
 	})
+}
+
+// reduceLogArgument chooses between ln(x) and -ln(1/x) before evaluating
+// either series. For x=m*2^k, 1<m<2, the reciprocal has mantissa 2/m and
+// exponent -k-1. A smaller mantissa gives a smaller z=(m-1)/(m+1), so its
+// positive series converges faster.
+//
+// First avoid adding an ln(2) evaluation: Ln keeps its direction for k=0
+// and reverses it for k=-1. Otherwise both directions need ln(2), or it is
+// already needed by the base-2/base-10 denominator. In those cases prefer
+// the smaller of m and 2/m, using a bounded integer comparison against m^2=2.
+// Nearly equal series keep the original direction rather than spending
+// full input precision deciding their cost. This preserves fast near-one
+// inputs on both sides without penalizing inputs near 1/4, 1/8, etc.
+// No floating-point estimate or rounded reciprocal enters the evaluation.
+func reduceLogArgument(num, den *big.Int, base int) (logArgument, bool) {
+	num, den, exponent := binaryMantissa(num, den)
+	// Powers of two already have a zero mantissa series in either direction.
+	if num.Cmp(den) == 0 {
+		return logArgument{num, den, exponent}, false
+	}
+	reciprocal := base == 0 && exponent == -1
+	if base != 0 || (exponent != 0 && exponent != -1) {
+		comparisonNum, comparisonDen := num, den
+		var prefixNum, prefixDen big.Int
+		const prefixBits = 64
+		if shift := den.BitLen() - prefixBits; shift > 0 {
+			prefixNum.Rsh(num, uint(shift))
+			prefixDen.Rsh(den, uint(shift)).Add(&prefixDen, oneInt)
+			// floor(num/2^shift)/(floor(den/2^shift)+1) < m.
+			// Reverse only if this lower bound already exceeds sqrt(2).
+			// Ambiguity affects only almost identical series costs; all
+			// returned coefficients below retain their complete precision.
+			comparisonNum, comparisonDen = &prefixNum, &prefixDen
+		}
+		var squareNum, twiceSquareDen big.Int
+		squareNum.Mul(comparisonNum, comparisonNum)
+		twiceSquareDen.Mul(comparisonDen, comparisonDen).Lsh(&twiceSquareDen, 1)
+		reciprocal = squareNum.Cmp(&twiceSquareDen) > 0
+	}
+	if reciprocal {
+		// binaryMantissa returned owned integers, so 2*den can reuse storage.
+		den.Lsh(den, 1)
+		num, den = den, num
+		exponent = -exponent - 1
+	}
+	return logArgument{num, den, exponent}, reciprocal
 }
 
 // logMantissaBounds evaluates ln(m) = 2 sum z^(2j+1)/(2j+1), where
