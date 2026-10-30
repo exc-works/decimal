@@ -221,6 +221,10 @@ methods return `ErrNoConvergence`. `Log2` panics with that error; use
 - `Format(fmt.State, verb rune)` implements `fmt.Formatter`, supporting
   `%v`, `%s`, `%q`, `%d`, `%f`, `%e`, `%g`, `%b` with width/precision/flags
 
+Scientific formatting derives the exponent directly from the coefficient and scale,
+so a large scale does not require expanding leading fractional zeros. General
+formatting (`%g`/`%G`) selects notation after rounding to the requested significant digits.
+
 ### JSON
 
 - `MarshalJSON()` encodes as a JSON string
