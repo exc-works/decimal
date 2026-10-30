@@ -110,7 +110,7 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 	}
 
 	num := new(big.Int).Set(value.Num())
-	den := new(big.Int).Set(value.Denom())
+	den := value.Denom()
 
 	if num.Sign() == 0 {
 		return Zero, nil
@@ -127,8 +127,14 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 		prec = fives
 	}
 
-	unscaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
-	unscaled.Quo(unscaled, den)
+	// The reduced denominator is 2^twos * 5^fives. Supply only the
+	// missing factors instead of constructing 10^prec and dividing it again.
+	unscaled := num
+	if twos > fives {
+		unscaled.Mul(unscaled, new(big.Int).Exp(fiveInt, big.NewInt(int64(twos-fives)), nil))
+	} else if fives > twos {
+		unscaled.Lsh(unscaled, uint(fives-twos))
+	}
 
 	return Decimal{
 		i:    unscaled,
@@ -389,12 +395,22 @@ func (d Decimal) SubRaw(i int64) Decimal {
 
 // Mul returns d * d2 rounded according to roundingMode.
 func (d Decimal) Mul(d2 Decimal, roundingMode RoundingMode) Decimal {
-	d1, d2, maxPrec := rescalePair(d, d2)
-
-	return Decimal{
-		i:    new(big.Int).Mul(d1.i, d2.i),
-		prec: maxPrec,
-	}.round(roundingMode)
+	validateRoundingMode(roundingMode)
+	d = initializeIfNeeded(d)
+	d2 = initializeIfNeeded(d2)
+	product := new(big.Int).Mul(d.i, d2.i)
+	// At max(input scales), only min(input scales) product digits are
+	// discarded. Avoid both operand expansion and adding their scales.
+	discard := min(d.prec, d2.prec)
+	if discard > 0 && product.Sign() != 0 {
+		var remainder big.Int
+		divisor := safeGetPrecisionMultiplier(discard)
+		product.QuoRem(product, divisor, &remainder)
+		if remainder.Sign() != 0 {
+			applyDivisionRounding(product, &remainder, divisor, roundingMode)
+		}
+	}
+	return Decimal{i: product, prec: max(d.prec, d2.prec)}
 }
 
 // MulDown returns d * d2 rounded down.
@@ -429,10 +445,17 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 	// Compute the coefficient at the requested scale directly. Rounding at
 	// the input scale first can turn a non-tie into a tie at the final scale.
 	num, den := d.i, d2.i
-	shift := prec + d2.prec - d.prec
-	if shift >= 0 {
+	if d.i.Sign() == 0 {
+		return NewWithPrec(0, prec)
+	}
+	shift := prec - d.prec
+	if shift > stdmath.MaxInt-d2.prec {
+		panic(fmt.Errorf("division scale overflow: %w", ErrOverflow))
+	}
+	shift += d2.prec
+	if shift > 0 {
 		num = new(big.Int).Mul(num, safeGetPrecisionMultiplier(shift))
-	} else {
+	} else if shift < 0 {
 		den = new(big.Int).Mul(den, safeGetPrecisionMultiplier(-shift))
 	}
 	quo, rem := new(big.Int).QuoRem(num, den, new(big.Int))
@@ -445,29 +468,7 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 // Quo returns d / d2 rounded according to roundingMode.
 // It panics if d2 is zero or roundingMode is invalid.
 func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
-	validateRoundingMode(roundingMode)
-	d = initializeIfNeeded(d)
-	d2 = initializeIfNeeded(d2)
-	if d2.i.Sign() == 0 {
-		panic(ErrDivideByZero)
-	}
-
-	d1, d2, maxPrec := rescalePair(d, d2)
-
-	// Scale the numerator so the truncated quotient is already at maxPrec
-	// precision; the remainder carries the exact information needed to make
-	// the rounding decision.
-	num := d1.i
-	if maxPrec > 0 {
-		num = new(big.Int).Mul(d1.i, safeGetPrecisionMultiplier(maxPrec))
-	}
-
-	quo, rem := new(big.Int).QuoRem(num, d2.i, new(big.Int))
-	if rem.Sign() != 0 {
-		applyDivisionRounding(quo, rem, d2.i, roundingMode)
-	}
-
-	return Decimal{i: quo, prec: maxPrec}
+	return d.QuoWithPrec(d2, max(d.prec, d2.prec), roundingMode)
 }
 
 // QuoDown returns d / d2 rounded down.
@@ -905,6 +906,33 @@ func (d Decimal) requireNonNegative() Decimal {
 //	 0 if d == d2
 //	+1 if d > d2
 func (d Decimal) Cmp(d2 Decimal) int {
+	sign, sign2 := d.Sign(), d2.Sign()
+	if sign != sign2 {
+		if sign < sign2 {
+			return -1
+		}
+		return 1
+	}
+	if sign == 0 {
+		return 0
+	}
+	if d.prec == d2.prec {
+		return d.i.Cmp(d2.i)
+	}
+	if d.prec > d2.prec {
+		return -d2.Cmp(d)
+	}
+	// Here d has the smaller scale. Bound its rescaled magnitude using
+	// 2^(3*shift) < 10^shift < 2^(4*shift), without constructing 10^shift
+	// or overflowing native integers. Close magnitudes use exact rescaling.
+	shift := d2.prec - d.prec
+	gap := d2.i.BitLen() - d.i.BitLen()
+	if gap < 0 || shift > gap/3 {
+		return sign
+	}
+	if gap > 0 && shift <= (gap-1)/4 {
+		return -sign
+	}
 	d1, d2, _ := rescalePair(d, d2)
 	return d1.i.Cmp(d2.i)
 }
@@ -1100,17 +1128,33 @@ func requireNonNegativePrecision(precision int) {
 
 func countFactor(value *big.Int, factor int64) (count int, remainder *big.Int) {
 	remainder = new(big.Int).Set(value)
-	divisor := big.NewInt(factor)
-	mod := new(big.Int)
-
-	for {
-		mod.Mod(remainder, divisor)
-		if mod.Sign() != 0 {
-			return
-		}
-		remainder.Quo(remainder, divisor)
-		count++
+	if factor == 2 {
+		count = int(remainder.TrailingZeroBits())
+		remainder.Rsh(remainder, uint(count))
+		return
 	}
+	// Find divisible powers factor^(1,2,4,...), then extract them from
+	// largest to smallest. This takes logarithmically many divisions even
+	// for denominators containing tens of thousands of factors of five.
+	power := big.NewInt(factor)
+	var quotient, mod big.Int
+	powers := make([]*big.Int, 0)
+	for {
+		mod.Mod(remainder, power)
+		if mod.Sign() != 0 {
+			break
+		}
+		powers = append(powers, power)
+		power = new(big.Int).Mul(power, power)
+	}
+	for i := len(powers) - 1; i >= 0; i-- {
+		quotient.QuoRem(remainder, powers[i], &mod)
+		if mod.Sign() == 0 {
+			remainder.Set(&quotient)
+			count += 1 << i
+		}
+	}
+	return
 }
 
 // Clone returns a deep copy of d. The returned Decimal shares no mutable state
