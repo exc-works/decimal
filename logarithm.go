@@ -45,7 +45,15 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 	}
 	// Normalization is independent of working precision, so retain its owned
 	// read-only integers across all certification attempts.
-	num, den, exponent := binaryMantissa(r.Num(), r.Denom())
+	// For x<1, ln(x)=-ln(1/x). Taking the exact rational reciprocal keeps
+	// inputs just below 1 near the series origin, rather than computing
+	// ln(m)-ln(2) with m nearly 2. No decimal reciprocal is rounded here.
+	reciprocal := r.Num().Cmp(r.Denom()) < 0
+	numerator, denominator := r.Num(), r.Denom()
+	if reciprocal {
+		numerator, denominator = denominator, numerator
+	}
+	num, den, exponent := binaryMantissa(numerator, denominator)
 	argument := logArgument{num, den, exponent}
 	var baseArgument logArgument
 	if base != 0 {
@@ -60,6 +68,12 @@ func certifiedLog(d Decimal, prec, base int) (Decimal, error) {
 		// cache belongs to one attempt: its binary scale changes on retry.
 		var ln2 fixedInterval
 		value, err := naturalLogBounds(argument, scale, bits, &ln2)
+		if err == nil && reciprocal {
+			// Negation reverses the enclosure endpoints; both are owned.
+			value.lo.Neg(value.lo)
+			value.hi.Neg(value.hi)
+			value.lo, value.hi = value.hi, value.lo
+		}
 		if err != nil || base == 0 {
 			return value, err
 		}

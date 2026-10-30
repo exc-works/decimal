@@ -60,6 +60,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   actionlint, including expression context availability.
 
 ### Performance
+- Use directed shifts for binary interval scales, normalize logarithms below
+  one through an exact reciprocal, and certify more negative exponentials
+  as zero before allocating positive-exponential intermediates.
 - Multiply and divide coefficients directly at the final scale, short-circuit
   comparisons by sign and magnitude bounds, and batch rational denominator
   factorization instead of repeatedly dividing one factor at a time.

@@ -47,6 +47,15 @@ with localcontext() as context:
         ("exp", "1000", 0),
     ]:
         add(operation, text, precision)
+    # Exercise exact reciprocal normalization and both sides of one.
+    for text in ["0.9999999999999999999999999", "0.999", "0.00001", "0.51"]:
+        for operation in ["ln", "log2", "log10"]:
+            for precision in [0, 18, 100]:
+                add(operation, text, precision)
+    for precision in [0, 1, 18, 100]:
+        for offset in ["-0.0000000001", "0", "0.0000000001"]:
+            threshold = -Decimal(5) * (precision + 1) / 2
+            add("exp", str(threshold + Decimal(offset)), precision)
     for operation, threshold in [
         ("exp", Decimal("1.5").ln()),
         ("ln", Decimal("0.5").exp()),

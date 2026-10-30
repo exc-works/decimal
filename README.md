@@ -164,6 +164,12 @@ Guard precision doubles from 64 to 8192 bits, allowing at most eight attempts;
 these limits are this library's resource policy, not universal Ziv parameters.
 
 Transcendental input scales and working precision are bounded by `1<<17`.
+Inputs below one use `ln(x) = -ln(1/x)` with an exact rational reciprocal,
+avoiding slow cancellation near one. Binary interval scaling uses directed
+shifts; both endpoint rounding and series tail bounds remain certified.
+Sufficiently negative exponentials certify zero from a rational bound before
+constructing large positive intermediates.
+
 Exponential working precision also reserves `ceil(abs(x))` digits to absorb
 growth during argument reduction. If the budget is exceeded, or the interval
 still straddles a rounding boundary after refinement, the error-returning
