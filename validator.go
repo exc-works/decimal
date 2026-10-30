@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
@@ -36,33 +37,36 @@ import (
 //
 // Calling this function multiple times on the same *validator.Validate is safe
 // and idempotent: re-registration overwrites the previous handler for each tag.
+// Parsed comparison parameters use a bounded, goroutine-safe cache owned by
+// this registration; values and validation outcomes remain exact.
 func RegisterGoPlaygroundValidator(v *validator.Validate) error {
 	if v == nil {
 		return fmt.Errorf("validator is nil: %w", ErrInvalidArgument)
 	}
 
+	params := new(decimalValidationParams)
 	if err := v.RegisterValidation("decimal_required", validateDecimalRequired); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_eq", validateDecimalEQ); err != nil {
+	if err := v.RegisterValidation("decimal_eq", params.validateDecimalEQ); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_ne", validateDecimalNE); err != nil {
+	if err := v.RegisterValidation("decimal_ne", params.validateDecimalNE); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_gt", validateDecimalGT); err != nil {
+	if err := v.RegisterValidation("decimal_gt", params.validateDecimalGT); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_gte", validateDecimalGTE); err != nil {
+	if err := v.RegisterValidation("decimal_gte", params.validateDecimalGTE); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_lt", validateDecimalLT); err != nil {
+	if err := v.RegisterValidation("decimal_lt", params.validateDecimalLT); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_lte", validateDecimalLTE); err != nil {
+	if err := v.RegisterValidation("decimal_lte", params.validateDecimalLTE); err != nil {
 		return err
 	}
-	if err := v.RegisterValidation("decimal_between", validateDecimalBetween); err != nil {
+	if err := v.RegisterValidation("decimal_between", params.validateDecimalBetween); err != nil {
 		return err
 	}
 	if err := v.RegisterValidation("decimal_positive", validateDecimalPositive); err != nil {
@@ -398,61 +402,61 @@ func validateDecimalRequired(fl validator.FieldLevel) bool {
 	return !field.IsNil()
 }
 
-func validateDecimalEQ(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalEQ(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return field.Equal(param)
 }
 
-func validateDecimalNE(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalNE(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return !field.Equal(param)
 }
 
-func validateDecimalGT(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalGT(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return field.GT(param)
 }
 
-func validateDecimalGTE(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalGTE(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return field.GTE(param)
 }
 
-func validateDecimalLT(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalLT(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return field.LT(param)
 }
 
-func validateDecimalLTE(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalLTE(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
 	}
-	param := mustParseDecimalParam(fl.Param())
+	param := p.decimal(fl.Param())
 	return field.LTE(param)
 }
 
-func validateDecimalBetween(fl validator.FieldLevel) bool {
+func (p *decimalValidationParams) validateDecimalBetween(fl validator.FieldLevel) bool {
 	field, ok := decimalFromField(fl.Field())
 	if !ok {
 		return false
@@ -460,7 +464,7 @@ func validateDecimalBetween(fl validator.FieldLevel) bool {
 	if field.IsNil() {
 		return false
 	}
-	min, max := mustParseDecimalRangeParam(fl.Param())
+	min, max := p.rangeBounds(fl.Param())
 	return field.GTE(min) && field.LTE(max)
 }
 
@@ -529,6 +533,64 @@ func decimalFromField(field reflect.Value) (Decimal, bool) {
 		return Decimal{}, false
 	}
 	return dec, true
+}
+
+// Cache only bounded, modest-sized parameters. Each registration owns its
+// cache through the validation closures; no global state retains validators
+// or arbitrary dynamic tags. Misses still follow the original parsing/panic
+// contract, including when an entry is too large or the cache is full.
+const (
+	validatorParamCacheLimit = 256
+	validatorParamMaxBytes   = 4096
+)
+
+type decimalValidationParams struct {
+	mu       sync.RWMutex
+	decimals map[string]Decimal
+	ranges   map[string][2]Decimal
+}
+
+func (p *decimalValidationParams) decimal(param string) Decimal {
+	p.mu.RLock()
+	value, ok := p.decimals[param]
+	p.mu.RUnlock()
+	if ok {
+		return value
+	}
+	// Parse outside the lock: malformed tags panic without poisoning it.
+	value = mustParseDecimalParam(param)
+	if len(param) <= validatorParamMaxBytes {
+		p.mu.Lock()
+		if len(p.decimals)+len(p.ranges) < validatorParamCacheLimit {
+			if p.decimals == nil {
+				p.decimals = make(map[string]Decimal)
+			}
+			p.decimals[param] = value
+		}
+		p.mu.Unlock()
+	}
+	return value
+}
+
+func (p *decimalValidationParams) rangeBounds(param string) (Decimal, Decimal) {
+	p.mu.RLock()
+	bounds, ok := p.ranges[param]
+	p.mu.RUnlock()
+	if ok {
+		return bounds[0], bounds[1]
+	}
+	lower, upper := mustParseDecimalRangeParam(param)
+	if len(param) <= validatorParamMaxBytes {
+		p.mu.Lock()
+		if len(p.decimals)+len(p.ranges) < validatorParamCacheLimit {
+			if p.ranges == nil {
+				p.ranges = make(map[string][2]Decimal)
+			}
+			p.ranges[param] = [2]Decimal{lower, upper}
+		}
+		p.mu.Unlock()
+	}
+	return lower, upper
 }
 
 func mustParseDecimalParam(param string) Decimal {

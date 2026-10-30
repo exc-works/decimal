@@ -308,6 +308,9 @@ if err := c.ShouldBindQuery(&req); err != nil {
   (scale)**, i.e. digits after the decimal point; **not** total significant
   digits. `123.45` has scale `2` and passes `decimal_max_precision=2`.
 - Uses exact `Decimal` comparison (`Cmp`), without `Float64` conversion
+- Reuses parsed comparison/range parameters in a bounded, concurrent cache per
+  registration. Oversized parameters and cache misses retain normal parsing
+  and validation behavior.
 - Supports friendly error messages via translation helpers:
   `RegisterGoPlaygroundValidatorTranslations`,
   `RegisterGoPlaygroundValidatorTranslationsWithMessages`,
