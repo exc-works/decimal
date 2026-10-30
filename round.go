@@ -174,7 +174,7 @@ func (d Decimal) roundUnnecessary() Decimal {
 
 	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
 	if rem.Sign() != 0 {
-		panic("expected 0 remainder")
+		panic(ErrRoundUnnecessary)
 	}
 	return Decimal{
 		i:    quo,
@@ -255,7 +255,7 @@ func applyDivisionRounding(quo, rem, divisor *big.Int, mode RoundingMode) {
 			}
 		}
 	case RoundUnnecessary:
-		panic("inexact conversion")
+		panic(ErrRoundUnnecessary)
 	default:
 		panic("invalid rounding mode")
 	}

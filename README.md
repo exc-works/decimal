@@ -427,20 +427,25 @@ marshaling, and gin `UnmarshalParam`. `null`/empty input sets `Valid=false`.
 
 ## Error Handling
 
-The package exposes sentinel errors so callers can switch on error category
-via `errors.Is`:
+The package exposes sentinel errors for returned errors and numeric panic
+payloads. Use `errors.Is` on a returned error, or on an error-valued payload
+after `recover`. Arithmetic methods documented to panic keep that behavior.
 
 - `ErrInvalidFormat` — malformed decimal string in `NewFromString`, `UnmarshalJSON`, etc.
-- `ErrInvalidPrecision` — negative precision
-- `ErrOverflow` — int64/uint64/float conversion overflow
-- `ErrDivideByZero` — division by zero
+- `ErrInvalidPrecision` — panic for negative precision; returned error for
+  unsupported binary encoding precision
+- `ErrOverflow` — panic when an exact arithmetic intermediate exceeds the
+  supported scale or coefficient-size bound
+- `ErrDivideByZero` — panic for division by zero or a negative power of zero
 - `ErrNegativeRoot` — even root of a negative value (`Sqrt`, `ApproxRoot`)
 - `ErrInvalidRoot` — non-positive `root` passed to `ApproxRoot`
 - `ErrNoConvergence` — a root or transcendental result could not be certified
   within the iteration or precision budget
 - `ErrInvalidLog` — logarithm of a non-positive value
-- `ErrRoundUnnecessary` — rounding required under `RoundUnnecessary` mode
-- `ErrUnmarshal` — binary/YAML/BSON/SQL unmarshal failures
+- `ErrRoundUnnecessary` — panic when rounding is required under `RoundUnnecessary`
+- `ErrUnmarshal` — malformed binary/YAML/BSON values, unsupported decode source
+  types, or non-finite floating-point decode inputs; text parsing errors can
+  retain `ErrInvalidFormat`
 - `ErrInvalidArgument` — invalid setup argument (e.g. nil validator/translator)
 
 ```go
@@ -449,6 +454,16 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
     // handle
 }
 ```
+
+The numeric panic payloads above are `error` values rather than strings. For
+example, a recovered error from division by zero matches `ErrDivideByZero`.
+Callers that previously matched recovered string values should use
+`errors.Is` instead.
+
+Conversions retain their existing `(value, bool)` contracts: `Int64` and
+`Uint64` report whether the value is an exact integer in range; `Float32` and
+`Float64` report exact representability. An inexact or overflowing float
+conversion returns `false`; these APIs do not return `ErrOverflow`.
 
 ## Concurrency
 

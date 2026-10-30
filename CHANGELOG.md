@@ -8,6 +8,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- Validator translation registration checks nil arguments before accessing
+  the translator's locale and returns ErrInvalidArgument consistently.
+- Numeric panics for divide-by-zero, invalid precision, arithmetic overflow,
+  and RoundUnnecessary now expose the corresponding sentinel errors. Their
+  payload type changes from string to error; use errors.Is after recovery.
+  Conversion methods retain their existing boolean status contracts.
+- Check multiplication and shift precision arithmetic before native integer
+  overflow, so extreme scales cannot wrap into an invalid representation.
 - Logarithms and exponentials now certify final HalfEven rounding using
   outward-rounded intervals and explicit series tail bounds. Working
   precision, constants, and iteration counts scale with the request; exhausted

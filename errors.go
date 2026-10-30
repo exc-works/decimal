@@ -2,22 +2,24 @@ package decimal
 
 import "errors"
 
-// Sentinel errors returned by the decimal package.
+// Sentinel errors used by returned errors and numeric panics.
 //
-// These errors are wrapped by the package's functions so that callers may use
-// errors.Is to identify a specific failure category without pattern matching
-// on the error message.
+// Error-returning functions wrap these values. Arithmetic functions documented
+// to panic retain that behavior, with error-valued payloads for the categories
+// below. After recovery, assert the payload to error before using errors.Is.
+// Conversion methods returning (value, bool) retain their boolean contracts.
 var (
-	// ErrOverflow indicates a conversion overflowed the target numeric type,
-	// such as int64, uint64, or float.
+	// ErrOverflow identifies a numeric panic when an exact arithmetic
+	// intermediate exceeds the supported scale or coefficient-size bound.
+	// Int64, Uint64, Float32, and Float64 report conversion status via bool.
 	ErrOverflow = errors.New("decimal: overflow")
 
-	// ErrDivideByZero indicates an attempted division by zero in Quo,
-	// QuoRem, or Mod.
+	// ErrDivideByZero identifies a panic on division by zero, including
+	// QuoWithPrec, Quo, QuoRem, Mod, and negative powers of zero.
 	ErrDivideByZero = errors.New("decimal: division by zero")
 
-	// ErrInvalidPrecision indicates a negative precision was supplied where
-	// a non-negative value is required.
+	// ErrInvalidPrecision identifies a negative-precision panic, or a returned
+	// MarshalBinary error for precision outside the supported encoding range.
 	ErrInvalidPrecision = errors.New("decimal: invalid precision")
 
 	// ErrInvalidFormat indicates NewFromString failed to parse the input.
@@ -39,7 +41,7 @@ var (
 	// non-positive value.
 	ErrInvalidLog = errors.New("decimal: log of non-positive value")
 
-	// ErrRoundUnnecessary indicates rounding was required but
+	// ErrRoundUnnecessary identifies a panic when rounding was required but
 	// RoundUnnecessary was specified.
 	ErrRoundUnnecessary = errors.New("decimal: rounding is necessary but RoundUnnecessary specified")
 

@@ -59,7 +59,7 @@ func init() {
 
 func safeGetPrecisionMultiplier(prec int) *big.Int {
 	if prec < 0 {
-		panic("negative precision")
+		panic(fmt.Errorf("negative precision: %w", ErrInvalidPrecision))
 	}
 	if prec <= cacheMaxPrecision {
 		return precisionMultipliers[prec]
@@ -406,13 +406,12 @@ func (d Decimal) MulDown(d2 Decimal) Decimal {
 func (d Decimal) MulExact(d2 Decimal) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
-	prec := int64(d.prec) + int64(d2.prec)
-	if prec > stdmath.MaxInt32 || prec < stdmath.MinInt32 {
-		panic("precision overflow")
+	if d.prec > stdmath.MaxInt32 || d2.prec > stdmath.MaxInt32-d.prec {
+		panic(fmt.Errorf("precision overflow: %w", ErrOverflow))
 	}
 	return Decimal{
 		i:    new(big.Int).Mul(d.i, d2.i),
-		prec: int(prec),
+		prec: d.prec + d2.prec,
 	}
 }
 
@@ -424,7 +423,7 @@ func (d Decimal) QuoWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) De
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
 	if d2.i.Sign() == 0 {
-		panic("division by zero")
+		panic(ErrDivideByZero)
 	}
 
 	// Compute the coefficient at the requested scale directly. Rounding at
@@ -450,7 +449,7 @@ func (d Decimal) Quo(d2 Decimal, roundingMode RoundingMode) Decimal {
 	d = initializeIfNeeded(d)
 	d2 = initializeIfNeeded(d2)
 	if d2.i.Sign() == 0 {
-		panic("division by zero")
+		panic(ErrDivideByZero)
 	}
 
 	d1, d2, maxPrec := rescalePair(d, d2)
@@ -537,7 +536,7 @@ func (d Decimal) RoundWithPrec(prec int) Decimal {
 func (d Decimal) QuoRem(d2 Decimal) (Decimal, Decimal) {
 	d1, d2, maxPrec := rescalePair(d, d2)
 	if d2.i.Sign() == 0 {
-		panic("division by zero")
+		panic(ErrDivideByZero)
 	}
 
 	quo, rem := new(big.Int).QuoRem(d1.i, d2.i, new(big.Int))
@@ -574,7 +573,7 @@ func (d Decimal) Power(power int64) Decimal {
 	}
 	if d.IsZero() {
 		if power < 0 {
-			panic("division by zero")
+			panic(ErrDivideByZero)
 		}
 		return NewWithPrec(0, d.prec)
 	}
@@ -596,7 +595,7 @@ func (d Decimal) Power(power int64) Decimal {
 	// big.Int allocation. Apply the same bound to the coefficient's bit length.
 	size := max(1, base.prec, base.i.BitLen())
 	if magnitude > uint64(stdmath.MaxInt32)/uint64(size) {
-		panic("power overflow")
+		panic(fmt.Errorf("power overflow: %w", ErrOverflow))
 	}
 	coeff := new(big.Int).Exp(base.i, new(big.Int).SetUint64(magnitude), nil)
 	exact := Decimal{i: coeff, prec: base.prec * int(magnitude)}
@@ -758,6 +757,9 @@ func (d Decimal) Shift(places int) Decimal {
 		return d
 	}
 
+	if places < 0 && int64(d.prec) > stdmath.MaxInt64+int64(places) {
+		panic(fmt.Errorf("precision overflow: %w", ErrOverflow))
+	}
 	targetPrec := int64(d.prec) - int64(places)
 	if targetPrec < 0 {
 		return Decimal{
@@ -766,7 +768,7 @@ func (d Decimal) Shift(places int) Decimal {
 		}
 	}
 	if targetPrec > stdmath.MaxInt32 {
-		panic("precision overflow")
+		panic(fmt.Errorf("precision overflow: %w", ErrOverflow))
 	}
 	return Decimal{
 		i:    d.i,
@@ -1090,7 +1092,7 @@ func initializeIfNeeded(value Decimal) Decimal {
 
 func requireNonNegativePrecision(precision int) {
 	if precision < 0 {
-		panic("negative precision")
+		panic(fmt.Errorf("negative precision: %w", ErrInvalidPrecision))
 	}
 }
 

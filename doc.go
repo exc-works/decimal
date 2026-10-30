@@ -5,6 +5,15 @@
 // which makes the package suitable for financial and accounting scenarios that
 // require deterministic base-10 behavior.
 //
+// # Errors and panics
+//
+// Error-returning APIs wrap sentinel errors for use with errors.Is. Numeric
+// APIs documented to panic retain that behavior; division by zero, invalid
+// precision, unsupported arithmetic size, and required rounding under
+// RoundUnnecessary use error-valued payloads. After recovery, callers can
+// assert the payload to error and use errors.Is. Conversion methods that
+// return (value, bool) retain their exactness/range status contracts.
+//
 // # Concurrency
 //
 // A Decimal value is safe for concurrent read access by multiple goroutines
