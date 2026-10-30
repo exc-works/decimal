@@ -327,12 +327,8 @@ func TestMathConstantsSanity(t *testing.T) {
 	})
 
 	t.Run("ln2 literal: Ln(2) rounds to ln2Literal", func(t *testing.T) {
-		// Independently compute Ln(2) via the library and confirm the first
-		// ~50 digits agree with the hardcoded literal. This catches the case
-		// where Ln(2) happens to be self-consistent with a wrong ln2Literal
-		// (because LnWithPrec multiplies by ln2Literal itself), by comparing
-		// at high precision — any digit typo in the literal would propagate
-		// and show up here as a large discrepancy against the stored string.
+		// Runtime Ln(2) is independently computed with interval bounds; the
+		// finite reference literal is not used by the calculation.
 		ln2Computed, err := New(2).LnWithPrec(workPrec)
 		if err != nil {
 			t.Fatalf("Ln(2) returned error: %v", err)

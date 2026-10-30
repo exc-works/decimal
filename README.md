@@ -132,7 +132,7 @@ If parsing results in zero, precision is normalized to `0`.
 - `Power(int64)`
 - `Sqrt() (Decimal, error)` / `SqrtWithPrec(prec)`
 - `ApproxRoot(int64) (Decimal, error)` / `ApproxRootWithPrec(root, prec)`
-- `Log2() Decimal`
+- `Log2() Decimal` / `Log2WithPrec(prec) (Decimal, error)`
 - `Log10() (Decimal, error)` / `Log10WithPrec(prec)` (input must be > 0)
 - `Ln() (Decimal, error)` / `LnWithPrec(prec)` (input must be > 0)
 - `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
@@ -147,6 +147,24 @@ Roots use exact integer arithmetic and exact midpoint comparisons for
 `RoundHalfEven`. Nontrivial root calculations return `ErrNoConvergence` if
 the input scale, degree, or degree times output scale exceeds `1<<17`, or if
 the integer iteration budget is exhausted.
+
+Logarithms and exponentials certify `RoundHalfEven` at the requested scale
+using outward-rounded intervals, including series remainders. Their constants
+and series lengths adapt to the working precision. `Log2` retains its receiver
+scale; the other default methods use `max(d.Precision(), 30)`.
+
+This follows a bounded **Ziv strategy**: evaluate with guard precision, accept
+only when both interval endpoints round to the same decimal, and otherwise
+increase internal precision and recompute. The output scale stays fixed.
+Guard precision doubles from 64 to 8192 bits, allowing at most eight attempts;
+these limits are this library's resource policy, not universal Ziv parameters.
+
+Transcendental input scales and working precision are bounded by `1<<17`.
+Exponential working precision also reserves `ceil(abs(x))` digits to absorb
+growth during argument reduction. If the budget is exceeded, or the interval
+still straddles a rounding boundary after refinement, the error-returning
+methods return `ErrNoConvergence`. `Log2` panics with that error; use
+`Log2WithPrec` when errors need to be handled explicitly.
 
 ### Precision Utilities
 
@@ -418,7 +436,8 @@ via `errors.Is`:
 - `ErrDivideByZero` — division by zero
 - `ErrNegativeRoot` — even root of a negative value (`Sqrt`, `ApproxRoot`)
 - `ErrInvalidRoot` — non-positive `root` passed to `ApproxRoot`
-- `ErrNoConvergence` — root calculation reached its iteration limit before converging
+- `ErrNoConvergence` — a root or transcendental result could not be certified
+  within the iteration or precision budget
 - `ErrInvalidLog` — logarithm of a non-positive value
 - `ErrRoundUnnecessary` — rounding required under `RoundUnnecessary` mode
 - `ErrUnmarshal` — binary/YAML/BSON/SQL unmarshal failures
@@ -452,7 +471,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 - `Log2()` panics unless value `> 0`
 - `ApproxRoot(root)` requires `root > 0`
 - even root of negative values returns error
-- root calculations return `ErrNoConvergence` if the iteration limit is reached;
+- root and transcendental calculations return `ErrNoConvergence` if their budget is exhausted;
   always check the returned error before using the result
 - `Quo` has a special integer-division path when both precisions are `0`
 - binary encoding normalizes trailing zeros (`7.50` and `7.5000` can encode identically)

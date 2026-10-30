@@ -1,10 +1,5 @@
 package decimal
 
-import (
-	"fmt"
-	"math/big"
-)
-
 // Max returns the greater of a and b.
 func Max(a, b Decimal) Decimal {
 	if a.Cmp(b) >= 0 {
@@ -31,16 +26,11 @@ func Between(v, lower, upper Decimal) bool {
 // approximation.
 const defaultLogExpPrec = 30
 
-// ln2Literal is the natural logarithm of 2 to 70 decimal places. Verified by
-// TestMathConstantsSanity. Source: OEIS A002162 / standard mathematical
-// references.
+// ln2Literal is a 70-place reference for tests. Runtime logarithms compute
+// ln(2) at their working precision instead of using this finite literal.
 //
 //	ln 2 = 0.69314718055994530941723212145817656807550013436025525412068000949...
 const ln2Literal = "0.6931471805599453094172321214581765680755001343602552541206800094933936"
-
-// ln2Decimal is ln2Literal pre-parsed once at init time so LnWithPrec does not
-// re-parse the constant on every call.
-var ln2Decimal = MustFromString(ln2Literal)
 
 // workingLogPrec returns a precision suitable for intermediate log/exp
 // computations. It uses the receiver's precision but never falls below
@@ -53,169 +43,34 @@ func workingLogPrec(d Decimal) int {
 	return d.prec
 }
 
-// Log10 returns an approximate base-10 logarithm of d.
-//
-// It returns an error wrapping ErrInvalidLog when d is not strictly positive.
-// Internally Log10 is computed as Log2(d) / Log2(10) at the receiver's
-// precision (bumped to defaultLogExpPrec when the receiver has fewer
-// fractional digits). The result is rescaled to the receiver's precision so
-// that callers receive output in a familiar scale.
-func (d Decimal) Log10() (Decimal, error) {
-	d = initializeIfNeeded(d)
-	if d.Sign() <= 0 {
-		return Decimal{}, fmt.Errorf("Log10(%s): %w", d.String(), ErrInvalidLog)
-	}
-	return d.Log10WithPrec(workingLogPrec(d))
-}
+// Log10 returns log10(d) rounded with RoundHalfEven at max(d.Precision(), 30).
+// It returns ErrInvalidLog for non-positive inputs or ErrNoConvergence if
+// rounding cannot be certified within the calculation budget.
+func (d Decimal) Log10() (Decimal, error) { return d.Log10WithPrec(workingLogPrec(d)) }
 
-// Log10WithPrec returns an approximate base-10 logarithm of d rescaled to
-// prec decimal places using RoundHalfEven.
-//
-// It returns an error wrapping ErrInvalidLog when d is not strictly positive.
-// It panics if prec is negative.
-func (d Decimal) Log10WithPrec(prec int) (Decimal, error) {
-	requireNonNegativePrecision(prec)
-	d = initializeIfNeeded(d)
-	if d.Sign() <= 0 {
-		return Decimal{}, fmt.Errorf("Log10(%s): %w", d.String(), ErrInvalidLog)
-	}
+// Log10WithPrec returns log10(d) correctly rounded to prec decimal places.
+// It returns ErrInvalidLog for non-positive inputs or ErrNoConvergence if
+// rounding cannot be certified within the calculation budget. It panics if
+// prec is negative.
+func (d Decimal) Log10WithPrec(prec int) (Decimal, error) { return certifiedLog(d, prec, 10) }
 
-	// Work at a precision that can absorb rounding from two Log2 calls and a
-	// division. A small buffer keeps the final RoundHalfEven clean.
-	work := prec + 6
-	if work < defaultLogExpPrec {
-		work = defaultLogExpPrec
-	}
+// Ln returns ln(d) rounded with RoundHalfEven at max(d.Precision(), 30).
+// Its error behavior is the same as LnWithPrec.
+func (d Decimal) Ln() (Decimal, error) { return d.LnWithPrec(workingLogPrec(d)) }
 
-	dScaled := d
-	if d.prec < work {
-		dScaled = d.Rescale(work, RoundHalfEven)
-	}
-	logD := dScaled.Log2()
+// LnWithPrec returns ln(d) correctly rounded to prec decimal places using
+// RoundHalfEven. It computes constants at the working precision and certifies
+// the final rounding with outward-rounded intervals. It returns ErrInvalidLog
+// for non-positive inputs or ErrNoConvergence if the calculation budget is
+// exhausted. It panics if prec is negative.
+func (d Decimal) LnWithPrec(prec int) (Decimal, error) { return certifiedLog(d, prec, 0) }
 
-	logTen := NewWithAppendPrec(10, work).Log2()
-	result := logD.QuoWithPrec(logTen, work, RoundHalfEven)
-	return result.Rescale(prec, RoundHalfEven), nil
-}
+// Exp returns e^d rounded with RoundHalfEven at max(d.Precision(), 30).
+// Its error behavior is the same as ExpWithPrec.
+func (d Decimal) Exp() (Decimal, error) { return d.ExpWithPrec(workingLogPrec(d)) }
 
-// Ln returns an approximate natural logarithm of d.
-//
-// It returns an error wrapping ErrInvalidLog when d is not strictly positive.
-// Internally Ln is computed as Log2(d) * ln(2) using a pre-computed
-// high-precision constant for ln(2).
-func (d Decimal) Ln() (Decimal, error) {
-	d = initializeIfNeeded(d)
-	if d.Sign() <= 0 {
-		return Decimal{}, fmt.Errorf("Ln(%s): %w", d.String(), ErrInvalidLog)
-	}
-	return d.LnWithPrec(workingLogPrec(d))
-}
-
-// LnWithPrec returns an approximate natural logarithm of d rescaled to prec
-// decimal places using RoundHalfEven.
-//
-// It returns an error wrapping ErrInvalidLog when d is not strictly positive.
-// It panics if prec is negative.
-func (d Decimal) LnWithPrec(prec int) (Decimal, error) {
-	requireNonNegativePrecision(prec)
-	d = initializeIfNeeded(d)
-	if d.Sign() <= 0 {
-		return Decimal{}, fmt.Errorf("Ln(%s): %w", d.String(), ErrInvalidLog)
-	}
-
-	work := prec + 6
-	if work < defaultLogExpPrec {
-		work = defaultLogExpPrec
-	}
-
-	dScaled := d
-	if d.prec < work {
-		dScaled = d.Rescale(work, RoundHalfEven)
-	}
-	logD := dScaled.Log2()
-
-	product := logD.Mul(ln2Decimal, RoundHalfEven)
-	return product.Rescale(prec, RoundHalfEven), nil
-}
-
-// Exp returns an approximate value of e raised to the power of d.
-//
-// It evaluates the Taylor series e^x = sum_{n>=0} x^n / n! with argument
-// reduction: e^x = (e^(x/2^k))^(2^k). The reduction shrinks |x| below 0.5,
-// which guarantees rapid convergence. The iteration is bounded by
-// maxIterations.
-func (d Decimal) Exp() (Decimal, error) {
-	d = initializeIfNeeded(d)
-	return d.ExpWithPrec(workingLogPrec(d))
-}
-
-// ExpWithPrec returns e^d rescaled to prec decimal places using
-// RoundHalfEven.
-//
-// It panics if prec is negative.
-func (d Decimal) ExpWithPrec(prec int) (Decimal, error) {
-	requireNonNegativePrecision(prec)
-	d = initializeIfNeeded(d)
-
-	work := prec + 10
-	if work < defaultLogExpPrec {
-		work = defaultLogExpPrec
-	}
-
-	if d.IsZero() {
-		return NewWithAppendPrec(1, prec), nil
-	}
-
-	// Handle negative argument via reciprocal: e^-x = 1 / e^x.
-	if d.IsNegative() {
-		pos, err := d.Neg().ExpWithPrec(work)
-		if err != nil {
-			return Decimal{}, err
-		}
-		one := NewWithAppendPrec(1, work)
-		inv := one.QuoWithPrec(pos, work, RoundHalfEven)
-		return inv.Rescale(prec, RoundHalfEven), nil
-	}
-
-	x := d.Rescale(work, RoundHalfEven)
-
-	// Argument reduction: divide x by 2^k until |x| <= 0.5 so that the Taylor
-	// series converges quickly. k is bounded to prevent excessive growth when
-	// squaring the result back up.
-	half := NewFromBigIntWithPrec(big.NewInt(5), 1).Rescale(work, RoundHalfEven)
-	k := 0
-	const maxReductions = 60
-	two := NewWithAppendPrec(2, work)
-	for x.Cmp(half) > 0 && k < maxReductions {
-		x = x.QuoWithPrec(two, work, RoundHalfEven)
-		k++
-	}
-
-	// Taylor series: result = 1 + x + x^2/2! + x^3/3! + ...
-	one := NewWithAppendPrec(1, work)
-	result := one
-	term := one
-
-	// Epsilon at which further terms no longer affect the working precision.
-	epsilon := Decimal{
-		i:    big.NewInt(1),
-		prec: work,
-	}
-
-	for n := 1; n < maxIterations; n++ {
-		// term_n = term_{n-1} * x / n
-		term = term.Mul(x, RoundHalfEven)
-		term = term.QuoWithPrec(NewWithAppendPrec(int64(n), work), work, RoundHalfEven)
-		result = result.Add(term)
-		if term.Abs().LT(epsilon) {
-			break
-		}
-	}
-
-	// Undo the argument reduction by squaring k times.
-	for i := 0; i < k; i++ {
-		result = result.Mul(result, RoundHalfEven)
-	}
-
-	return result.Rescale(prec, RoundHalfEven), nil
-}
+// ExpWithPrec returns e^d correctly rounded to prec decimal places using
+// RoundHalfEven. It bounds Taylor truncation and all argument-reduction errors,
+// and returns ErrNoConvergence if rounding cannot be certified within the
+// calculation budget. It panics if prec is negative.
+func (d Decimal) ExpWithPrec(prec int) (Decimal, error) { return certifiedExp(d, prec) }

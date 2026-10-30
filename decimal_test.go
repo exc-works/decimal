@@ -944,7 +944,7 @@ func TestDecimalLog2(t *testing.T) {
 		{
 			name:     "log2 of 33",
 			value:    NewWithAppendPrec(33, 18),
-			want:     mustDecimal(t, "5.044394119358453436"),
+			want:     mustDecimal(t, "5.044394119358453438"),
 			wantPrec: 18,
 		},
 		{
@@ -962,7 +962,7 @@ func TestDecimalLog2(t *testing.T) {
 		{
 			name:     "log2 of tiny number",
 			value:    NewWithPrec(2, 18),
-			want:     mustDecimal(t, "-58.794705707972522263"),
+			want:     mustDecimal(t, "-58.794705707972522262"),
 			wantPrec: 18,
 		},
 	}

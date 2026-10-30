@@ -8,6 +8,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- Logarithms and exponentials now certify final HalfEven rounding using
+  outward-rounded intervals and explicit series tail bounds. Working
+  precision, constants, and iteration counts scale with the request; exhausted
+  budgets return ErrNoConvergence instead of inaccurate success values.
+- Corrected Log2 rounding at small input scales and replaced two legacy test
+  expectations that encoded last-place errors. Added Log2WithPrec for explicit
+  target precision and error handling.
 - Negative integer powers retain the exact denominator until final rounding
   and handle `MinInt64` without signed overflow or infinite recursion.
 - Roots use exact integer roots and midpoint comparisons, fixing HalfEven
@@ -40,6 +47,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Configure workflow caches in a runner step instead of using the unavailable
   `runner` context in job-level `env`. CI now validates both workflows with
   actionlint, including expression context availability.
+
+### Performance
+- Separate interval primitives, logarithms, exponentials, and the shared
+  precision driver. Document Ziv's enclosure/round/refine strategy and its
+  resource budget; encapsulate reusable rounding scratch without changing
+  the precision or rounding contracts.
+- Reuse scratch integers and interval buffers throughout logarithm and
+  exponential series and precision refinement. Normalize logarithm inputs
+  once per calculation and share ln(2) bounds within each precision attempt.
+  Operand immutability and independently owned result bounds are preserved.
 
 ## [0.7.0] - 2026-06-02
 
