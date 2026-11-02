@@ -1,5 +1,7 @@
 # User Guide (English)
 
+[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+
 This guide shows practical usage patterns for `github.com/exc-works/decimal`.
 
 ## 1. Installation
@@ -52,6 +54,7 @@ a := decimal.MustFromString("2.555")
 b := decimal.MustFromString("1.00")
 
 mul := a.Mul(b, decimal.RoundHalfEven)
+mul4 := a.MulWithPrec(b, 4, decimal.RoundHalfEven)
 quo := a.QuoWithPrec(decimal.MustFromString("3"), 2, decimal.RoundHalfEven)
 ```
 
@@ -115,7 +118,7 @@ root, _ := decimal.New(27).ApproxRoot(3)            // 3
 `Log10`/`Ln` require a positive receiver; `Sqrt`/`ApproxRoot` reject even
 roots of negative values. All expose `*WithPrec(prec)` variants for explicit
 precision control. Without one, these functions auto-bump precision to
-`max(d.prec, 30)` so integer receivers still produce meaningful results.
+`max(d.prec, 20)` so integer receivers still produce meaningful results.
 
 ## 9. Formatting and Display
 

@@ -817,15 +817,13 @@ func TestDecimalSqrtAndApproxRoot(t *testing.T) {
 		})
 	}
 
-	t.Run("irrational sqrt(2) approximates within tolerance", func(t *testing.T) {
+	t.Run("irrational sqrt(2) correctly rounds at the default scale", func(t *testing.T) {
 		got, err := mustDecimal(t, "2").Sqrt()
 		if err != nil {
-			t.Fatalf("Sqrt() returned error: %v", err)
+			t.Fatal(err)
 		}
-		want := mustDecimal(t, "1.41421356237309504880168872420969807856967187537694")
-		eps := mustDecimal(t, "0.0000000000000000000000000001") // 1e-28
-		if got.Sub(want).Abs().GT(eps) {
-			t.Fatalf("Sqrt(2) = %s, want approx %s", got, want)
+		if got.Precision() != 20 || got.StringWithTrailingZeros() != "1.41421356237309504880" {
+			t.Fatalf("Sqrt(2) = %s (scale %d)", got.StringWithTrailingZeros(), got.Precision())
 		}
 	})
 
@@ -933,37 +931,37 @@ func TestDecimalLog2(t *testing.T) {
 			name:     "log2 of 1",
 			value:    NewWithAppendPrec(1, 18),
 			want:     New(0),
-			wantPrec: 18,
+			wantPrec: 20,
 		},
 		{
 			name:     "log2 of 2",
 			value:    NewWithAppendPrec(2, 18),
 			want:     New(1),
-			wantPrec: 18,
+			wantPrec: 20,
 		},
 		{
 			name:     "log2 of 33",
 			value:    NewWithAppendPrec(33, 18),
-			want:     mustDecimal(t, "5.044394119358453438"),
-			wantPrec: 18,
+			want:     mustDecimal(t, "5.04439411935845343765"),
+			wantPrec: 20,
 		},
 		{
 			name:     "log2 of 2.12345678",
 			value:    mustDecimal(t, "2.12345678"),
-			want:     mustDecimal(t, "1.08641474"),
-			wantPrec: 8,
+			want:     mustDecimal(t, "1.08641474493950846685"),
+			wantPrec: 20,
 		},
 		{
 			name:     "log2 of 0.2",
 			value:    NewFromBigIntWithPrec(bigLogInput, 18),
-			want:     mustDecimal(t, "-2.321928094887362348"),
-			wantPrec: 18,
+			want:     mustDecimal(t, "-2.32192809488736234787"),
+			wantPrec: 20,
 		},
 		{
 			name:     "log2 of tiny number",
 			value:    NewWithPrec(2, 18),
-			want:     mustDecimal(t, "-58.794705707972522262"),
-			wantPrec: 18,
+			want:     mustDecimal(t, "-58.79470570797252226167"),
+			wantPrec: 20,
 		},
 	}
 

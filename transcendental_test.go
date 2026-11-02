@@ -82,8 +82,10 @@ func TestTranscendentalBudgets(t *testing.T) {
 
 func TestLog2CorrectRounding(t *testing.T) {
 	for _, tc := range []struct{ input, want string }{{"1.9", "0.9"}, {"0.3", "-1.7"}, {"3.000000000000000000", "1.584962500721156181"}} {
-		if got := MustFromString(tc.input).Log2(); !got.Equal(MustFromString(tc.want)) {
-			t.Fatalf("Log2(%s)=%s, want %s", tc.input, got, tc.want)
+		input := MustFromString(tc.input)
+		got, err := input.Log2WithPrec(input.Precision())
+		if err != nil || !got.Equal(MustFromString(tc.want)) || got.Precision() != input.Precision() {
+			t.Fatalf("Log2WithPrec(%s, %d)=%s, %v; want %s", tc.input, input.Precision(), got, err, tc.want)
 		}
 	}
 	if _, err := Zero.Log2WithPrec(18); !errors.Is(err, ErrInvalidLog) {

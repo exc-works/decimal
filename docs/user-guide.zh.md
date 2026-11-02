@@ -1,5 +1,7 @@
 # 用户指南（中文）
 
+[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+
 本指南展示 `github.com/exc-works/decimal` 的实用用法。
 
 ## 1. 安装
@@ -52,6 +54,7 @@ a := decimal.MustFromString("2.555")
 b := decimal.MustFromString("1.00")
 
 mul := a.Mul(b, decimal.RoundHalfEven)
+mul4 := a.MulWithPrec(b, 4, decimal.RoundHalfEven)
 quo := a.QuoWithPrec(decimal.MustFromString("3"), 2, decimal.RoundHalfEven)
 ```
 
