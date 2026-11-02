@@ -186,7 +186,15 @@ if r.Amount.Valid {
 }
 ```
 
-`NullDecimal` は SQL、JSON、YAML、Text、BSON、および gin バインディングをサポートします。`null` または空の入力の場合、`Valid=false` に設定されます。
+| API | 入力 | 結果 |
+| --- | --- | --- |
+| `JSON / YAML / BSON` | `null` | `Valid=false` |
+| `SQL Scan` | `nil` | `Valid=false` |
+| `Text / Param` | `""` | `Valid=false` |
+| `XML` | `""` | `Valid=false` |
+| `JSON / SQL Scan` | `""` | `error` |
+| `Marshal* / Value` | `Valid=true, Decimal{}` | `"0"` |
+
 
 ## 11. バリデータの統合
 

@@ -24,3 +24,21 @@ Raw arithmetic behavior is unchanged; its comments now describe coefficient
 units. Formatting behavior is unchanged; `%g/%G` comments now describe the
 actual exponent thresholds. No new general parameter-error classification,
 uniform precision cap, or nil big.Int check is introduced.
+
+## Decoding and nullable values
+
+* Failed decodes now preserve all receiver state, including IsNil and Valid.
+  In particular, invalid JSON no longer initializes an uninitialized Decimal.
+* NullDecimal.Valid alone determines whether encoding produces an empty value.
+  Valid=true with an uninitialized Decimal now encodes as valid zero in
+  JSON/XML/BSON, rather than null or empty content. Existing valid-zero SQL,
+  Text, and YAML behavior is retained.
+* Returned decoder and Scan errors consistently wrap ErrUnmarshal while retaining
+  underlying categories such as ErrInvalidFormat and JSON/XML syntax error types.
+  Code should use errors.Is/errors.As rather than error-string equality or direct
+  concrete-type assertions against the outer wrapper.
+
+The entry-point-specific null and empty-input rules remain as specified in the
+[contract's decoding table](numeric-contract.md#decoding-states-and-nullable-values).
+In particular, JSON/SQL empty strings are errors, while empty Text/Param clears
+NullDecimal. Binary empty input continues to produce initialized zero.

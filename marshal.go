@@ -1,9 +1,11 @@
 package decimal
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -167,33 +169,28 @@ func (d Decimal) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
-// It accepts JSON strings and JSON numbers, treats null as a no-op, and updates d in place.
+// It accepts JSON strings and JSON numbers and treats null as a no-op.
+// On error it preserves d and wraps ErrUnmarshal together with the cause.
 func (d *Decimal) UnmarshalJSON(bz []byte) error {
-	if len(bz) == len("null") && string(bz) == "null" {
+	bz = bytes.Trim(bz, " \t\r\n")
+	if bytes.Equal(bz, []byte("null")) {
 		return nil
 	}
-
-	if d.i == nil {
-		d.i = new(big.Int)
-	}
-
 	var text string
-	err := json.Unmarshal(bz, &text)
-	if err != nil {
-		switch err.(type) {
-		case *json.UnmarshalTypeError:
-			dTemp, err := NewFromString(string(bz))
-			if err == nil {
-				*d = dTemp
-				return nil
-			}
+	if err := json.Unmarshal(bz, &text); err != nil {
+		var typeError *json.UnmarshalTypeError
+		// A syntactically valid JSON number is accepted alongside strings.
+		// Keep JSON syntax/type errors for every other input shape.
+		if errors.As(err, &typeError) && len(bz) > 0 && (bz[0] == '-' || bz[0] >= '0' && bz[0] <= '9') {
+			text = string(bz)
+		} else {
+			return wrapUnmarshalError(err)
 		}
-		return err
 	}
 
 	newDec, err := NewFromString(text)
 	if err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 
 	*d = newDec
@@ -232,7 +229,7 @@ func (d Decimal) MarshalText() ([]byte, error) {
 func (d *Decimal) UnmarshalText(text []byte) error {
 	parsed, err := NewFromString(string(text))
 	if err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 	*d = parsed
 	return nil
@@ -283,11 +280,12 @@ func (d *Decimal) UnmarshalBinary(data []byte) error {
 
 	// Read the precision as fixed-width bytes. Reject values that would lazily
 	// blow up later when 10^prec is materialized for arithmetic.
-	prec := int(binary.BigEndian.Uint32(data[:PrecisionFixedSize]))
-	if prec > maxParsedPrecision {
+	encodedPrecision := binary.BigEndian.Uint32(data[:PrecisionFixedSize])
+	if encodedPrecision > maxParsedPrecision {
 		return fmt.Errorf("error decoding binary: precision %d exceeds maximum %d: %w",
-			prec, maxParsedPrecision, ErrUnmarshal)
+			encodedPrecision, maxParsedPrecision, ErrUnmarshal)
 	}
+	prec := int(encodedPrecision)
 	// Decode into a temporary so malformed input leaves the old value intact.
 	coeff := new(big.Int)
 	if err := coeff.GobDecode(data[PrecisionFixedSize:]); err != nil {
@@ -342,11 +340,11 @@ func (d *Decimal) Scan(value any) error {
 		// default is trying to interpret value stored as string
 		text, err := unquoteIfQuoted(v)
 		if err != nil {
-			return err
+			return wrapUnmarshalError(err)
 		}
 		bTemp, err := NewFromString(text)
 		if err != nil {
-			return err
+			return wrapUnmarshalError(err)
 		}
 		*d = bTemp
 		return nil

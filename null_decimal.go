@@ -1,6 +1,7 @@
 package decimal
 
 import (
+	"bytes"
 	"database/sql/driver"
 	"encoding/xml"
 	"strings"
@@ -44,18 +45,18 @@ func (n NullDecimal) Value() (driver.Value, error) {
 }
 
 // MarshalJSON implements json.Marshaler.
-// An invalid NullDecimal is encoded as JSON null.
+// Valid alone determines nullness. A valid uninitialized Decimal encodes as zero.
 func (n NullDecimal) MarshalJSON() ([]byte, error) {
 	if !n.Valid {
 		return []byte("null"), nil
 	}
-	return n.Decimal.MarshalJSON()
+	return initializeIfNeeded(n.Decimal).MarshalJSON()
 }
 
 // UnmarshalJSON implements json.Unmarshaler.
 // JSON null sets Valid to false; any other value is parsed via Decimal.UnmarshalJSON.
 func (n *NullDecimal) UnmarshalJSON(data []byte) error {
-	if len(data) == len("null") && string(data) == "null" {
+	if bytes.Equal(bytes.Trim(data, " \t\r\n"), []byte("null")) {
 		n.Decimal = Decimal{}
 		n.Valid = false
 		return nil
@@ -118,7 +119,7 @@ func (n NullDecimal) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 	if !n.Valid {
 		return e.EncodeElement("", start)
 	}
-	return n.Decimal.MarshalXML(e, start)
+	return initializeIfNeeded(n.Decimal).MarshalXML(e, start)
 }
 
 // UnmarshalXML implements xml.Unmarshaler.
@@ -127,7 +128,7 @@ func (n NullDecimal) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 func (n *NullDecimal) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
 	var text string
 	if err := d.DecodeElement(&text, &start); err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 	if strings.TrimSpace(text) == "" {
 		n.Decimal = Decimal{}
@@ -136,7 +137,7 @@ func (n *NullDecimal) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error
 	}
 	parsed, err := NewFromString(strings.TrimSpace(text))
 	if err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 	n.Decimal = parsed
 	n.Valid = true
@@ -150,7 +151,7 @@ func (n NullDecimal) MarshalXMLAttr(name xml.Name) (xml.Attr, error) {
 	if !n.Valid {
 		return xml.Attr{}, nil
 	}
-	return n.Decimal.MarshalXMLAttr(name)
+	return initializeIfNeeded(n.Decimal).MarshalXMLAttr(name)
 }
 
 // UnmarshalXMLAttr implements xml.UnmarshalerAttr.

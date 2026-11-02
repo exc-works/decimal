@@ -186,7 +186,15 @@ if r.Amount.Valid {
 }
 ```
 
-`NullDecimal`은 SQL, JSON, YAML, Text, BSON 및 gin 바인딩을 지원합니다. `null` 또는 빈 입력은 `Valid=false`로 설정됩니다.
+| API | 입력 | 결과 |
+| --- | --- | --- |
+| `JSON / YAML / BSON` | `null` | `Valid=false` |
+| `SQL Scan` | `nil` | `Valid=false` |
+| `Text / Param` | `""` | `Valid=false` |
+| `XML` | `""` | `Valid=false` |
+| `JSON / SQL Scan` | `""` | `error` |
+| `Marshal* / Value` | `Valid=true, Decimal{}` | `"0"` |
+
 
 ## 11. Validator 통합
 

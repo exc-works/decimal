@@ -21,7 +21,7 @@ func (d Decimal) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 func (d *Decimal) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
 	var text string
 	if err := dec.DecodeElement(&text, &start); err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 
 	text = strings.TrimSpace(text)
@@ -32,7 +32,7 @@ func (d *Decimal) UnmarshalXML(dec *xml.Decoder, start xml.StartElement) error {
 
 	parsed, err := NewFromString(text)
 	if err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 
 	*d = parsed
@@ -59,7 +59,7 @@ func (d *Decimal) UnmarshalXMLAttr(attr xml.Attr) error {
 
 	parsed, err := NewFromString(value)
 	if err != nil {
-		return err
+		return wrapUnmarshalError(err)
 	}
 
 	*d = parsed

@@ -192,8 +192,15 @@ if r.Amount.Valid {
 }
 ```
 
-`NullDecimal` admite SQL, JSON, YAML, Text, BSON y binding de gin. Una entrada
-`null` o vacía establece `Valid=false`.
+| API | Entrada | Resultado |
+| --- | --- | --- |
+| `JSON / YAML / BSON` | `null` | `Valid=false` |
+| `SQL Scan` | `nil` | `Valid=false` |
+| `Text / Param` | `""` | `Valid=false` |
+| `XML` | `""` | `Valid=false` |
+| `JSON / SQL Scan` | `""` | `error` |
+| `Marshal* / Value` | `Valid=true, Decimal{}` | `"0"` |
+
 
 ## 11. Integración con validator
 

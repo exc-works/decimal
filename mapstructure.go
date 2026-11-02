@@ -43,14 +43,17 @@ var (
 // DecodeHookFuncType. It is goroutine-safe and stateless.
 func DecodeHook() func(from, to reflect.Type, data any) (any, error) {
 	return func(_ reflect.Type, to reflect.Type, data any) (any, error) {
+		var value any
+		var err error
 		switch to {
 		case decimalType:
-			return decodeToDecimal(data)
+			value, err = decodeToDecimal(data)
 		case nullDecimalType:
-			return decodeToNullDecimal(data)
+			value, err = decodeToNullDecimal(data)
 		default:
 			return data, nil
 		}
+		return value, wrapUnmarshalError(err)
 	}
 }
 

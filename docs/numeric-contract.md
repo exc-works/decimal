@@ -6,7 +6,7 @@ release number will be assigned during release preparation; see
 [migration notes](numeric-contract-migration.md) for observable changes.
 
 This document is the primary specification for the numerical operations,
-conversions, and formatting described below. Go comments, examples, and guides
+conversions, decoding states, and formatting described below. Go comments, examples, and guides
 must agree with it. An implementation, an existing expected value, or another
 library's output is evidence to check against this contract, not its definition.
 
@@ -154,6 +154,47 @@ all to zero. Nonzero values that round to zero return same-sign floating zero
 and false. A negative floating-zero output does not add negative-zero state to
 Decimal itself. Exactly representable subnormals can return true.
 
+## Decoding states and nullable values
+
+When an error-returning decoder or Scan method fails, the receiver's value,
+scale, IsNil, and, for NullDecimal, Valid must all remain as before the call.
+Parsing into a temporary and committing only on success avoids partial updates.
+
+Successful null or empty input has an entry-point-specific meaning:
+
+| Input | Decimal | NullDecimal |
+| --- | --- | --- |
+| JSON literal `null` | Preserve the previous state | Clear to uninitialized Decimal, scale 0, Valid=false |
+| YAML null passed to UnmarshalYAML | Preserve the previous state | Clear to uninitialized Decimal, scale 0, Valid=false |
+| JSON string `""` | Parse error; preserve state | Parse error; preserve state |
+| Empty Text / Param | Parse error; preserve state | Clear to uninitialized Decimal, scale 0, Valid=false |
+| Empty or whitespace-only XML content / attribute value | Clear to uninitialized Decimal, scale 0 | Clear to uninitialized Decimal, scale 0, Valid=false |
+| SQL Scan(nil) | Clear to uninitialized Decimal, scale 0 | Clear to uninitialized Decimal, scale 0, Valid=false |
+| SQL empty string or byte slice | Parse error; preserve state | Parse error; preserve state |
+| BSON Null | Clear to uninitialized Decimal, scale 0 | Clear to uninitialized Decimal, scale 0, Valid=false |
+| DecodeHook nil | ErrUnmarshal | Uninitialized Decimal, scale 0, Valid=false |
+| DecodeHook empty string or byte slice | ErrUnmarshal and ErrInvalidFormat | Uninitialized Decimal, scale 0, Valid=false |
+| Binary empty byte input | Initialized zero at scale 0 | No corresponding Binary API |
+
+The table describes calls to the package's methods or hook. A third-party
+framework may handle null or missing fields before invoking custom methods;
+its dispatch behavior is not established by this table. Quoted YAML `"null"`
+is a string and fails numerical parsing. Zero-length input and whitespace-only
+text are not generally interchangeable.
+
+NullDecimal.Valid is its sole nullness discriminator. Valid=false encodes using
+that format's empty-value rule. Valid=true encodes as a valid number even if its
+Decimal field is uninitialized; that state means valid zero. For example,
+NewNullDecimal(Decimal{}) encodes as JSON `"0"`, XML character data `0`, a BSON
+string `0`, and SQL string `0`. Encoding does not mutate the source state.
+
+Compact encodings generally preserve numerical value, not every representation
+detail. Fractional trailing zeros can be normalized. In particular, an
+uninitialized Decimal encodes as empty Binary data, which decodes to initialized
+zero: the value is zero but IsNil changes from true to false. That behavior is
+intentional. NullDecimal uses a named Decimal field and does not acquire its
+Binary methods through promotion.
+
 ## Formatting
 
 Formatting does not mutate the Decimal. String emits compact decimal text
@@ -182,6 +223,14 @@ Documented error categories are stable through errors.Is; diagnostic wording
 is not a fixed interface. Existing numeric panic categories retain their
 published behavior. There is no blanket requirement to change programmer-error
 panics into ErrInvalidArgument or to add nil-argument checks.
+
+The package's error-returning decoding and Scan entry points wrap ErrUnmarshal
+and preserve underlying identities. This includes JSON, YAML, XML, BSON,
+Text/Param, Binary, SQL Scan, and supported DecodeHook targets. Invalid numeric
+text also remains identifiable as ErrInvalidFormat. JSON/XML syntax error types
+remain available through errors.As. NewFromString itself returns ErrInvalidFormat,
+without adding the decoding category. Errors produced by external frameworks
+outside these entry points are outside this wrapping guarantee.
 
 Current entry points have different representation and calculation budgets.
 The parsed fractional/exponent magnitude is limited to `1<<17`; that is not
