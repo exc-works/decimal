@@ -190,8 +190,15 @@ if r.Amount.Valid {
 }
 ```
 
-`NullDecimal` 支持 SQL、JSON、YAML、Text、BSON 以及 gin 绑定。
-`null` 或空字符串输入会令 `Valid=false`。
+| 入口 | 输入 | 结果 |
+| --- | --- | --- |
+| `JSON / YAML / BSON` | `null` | `Valid=false` |
+| `SQL Scan` | `nil` | `Valid=false` |
+| `Text / Param` | `""` | `Valid=false` |
+| `XML` | `""` | `Valid=false` |
+| `JSON / SQL Scan` | `""` | `error` |
+| `Marshal* / Value` | `Valid=true, Decimal{}` | `"0"` |
+
 
 ## 11. Validator 集成
 

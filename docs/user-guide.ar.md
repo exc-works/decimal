@@ -191,8 +191,15 @@ if r.Amount.Valid {
 }
 ```
 
-يدعم `NullDecimal` كلًّا من SQL و JSON و YAML و Text و BSON وربط gin.
-المدخل `null` أو الفارغ يضبط `Valid=false`.
+| الواجهة | الإدخال | النتيجة |
+| --- | --- | --- |
+| `JSON / YAML / BSON` | `null` | `Valid=false` |
+| `SQL Scan` | `nil` | `Valid=false` |
+| `Text / Param` | `""` | `Valid=false` |
+| `XML` | `""` | `Valid=false` |
+| `JSON / SQL Scan` | `""` | `error` |
+| `Marshal* / Value` | `Valid=true, Decimal{}` | `"0"` |
+
 
 ## 11. التكامل مع المدقق
 

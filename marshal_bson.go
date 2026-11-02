@@ -98,7 +98,7 @@ func (n NullDecimal) MarshalBSONValue() (byte, []byte, error) {
 	if !n.Valid {
 		return byte(bson.TypeNull), nil, nil
 	}
-	return n.Decimal.MarshalBSONValue()
+	return initializeIfNeeded(n.Decimal).MarshalBSONValue()
 }
 
 // UnmarshalBSONValue implements bson.ValueUnmarshaler for NullDecimal.

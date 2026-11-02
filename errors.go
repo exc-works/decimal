@@ -1,6 +1,18 @@
 package decimal
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
+
+// wrapUnmarshalError adds the decoding category while retaining the cause's
+// identity for errors.Is/errors.As. Already categorized errors pass through.
+func wrapUnmarshalError(err error) error {
+	if err == nil || errors.Is(err, ErrUnmarshal) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", ErrUnmarshal, err)
+}
 
 // Sentinel errors used by returned errors and numeric panics.
 //
