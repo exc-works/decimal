@@ -4,182 +4,23 @@ import (
 	"math/big"
 )
 
+// round rounds d.i/10^d.prec to an integer coefficient. Here d.prec is the
+// number of discarded places; callers replace the result's scale afterward.
+// The input is read-only and the returned coefficient is independently owned.
 func (d Decimal) round(mode RoundingMode) Decimal {
-	switch mode {
-	case RoundDown:
-		return d.roundDown()
-	case RoundUp:
-		return d.roundUp()
-	case RoundCeiling:
-		return d.roundCeiling()
-	case RoundHalfUp:
-		return d.roundHalfUp()
-	case RoundHalfDown:
-		return d.roundHalfDown()
-	case RoundHalfEven:
-		return d.roundHalfEven()
-	case RoundUnnecessary:
-		return d.roundUnnecessary()
-	default:
-		panic("invalid rounding mode")
-	}
-}
-
-func (d Decimal) roundDown() Decimal {
-	value := new(big.Int).Quo(d.i, safeGetPrecisionMultiplier(d.prec))
-	return Decimal{
-		i:    value,
-		prec: d.prec,
-	}
-}
-
-func (d Decimal) roundTruncate() Decimal {
-	return d.roundDown()
-}
-
-func (d Decimal) roundUp() Decimal {
-	if d.IsNegative() {
-		// Make d positive
-		abs := d.Neg()
-		abs = abs.roundUp()
-		return abs.Neg()
-	}
-
-	// Get the truncated quotient and remainder
-	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
-	if rem.Sign() == 0 {
-		return Decimal{
-			i:    quo,
-			prec: d.prec,
-		}
-	}
-
-	return Decimal{
-		i:    quo.Add(quo, oneInt),
-		prec: d.prec,
-	}
-}
-
-func (d Decimal) roundCeiling() Decimal {
-	if d.IsNegative() {
-		return d.roundDown()
-	}
-	return d.roundUp()
-}
-
-func (d Decimal) roundHalfUp() Decimal {
-	if d.prec == 0 {
-		return d
-	}
-	if d.IsNegative() {
-		// Make a positive
-		abs := d.Neg()
-		abs = abs.roundHalfUp()
-		return abs.Neg()
-	}
-	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
-	fivePrecision := new(big.Int).Mul(fiveInt, safeGetPrecisionMultiplier(d.prec-1))
-	cmp := rem.Cmp(fivePrecision)
-	if cmp < 0 {
-		return Decimal{
-			i:    quo,
-			prec: d.prec,
-		}
+	validateRoundingMode(mode)
+	divisor := safeGetPrecisionMultiplier(d.prec)
+	coefficient := new(big.Int)
+	if mode == RoundDown {
+		coefficient.Quo(d.i, divisor)
 	} else {
-		return Decimal{
-			i:    quo.Add(quo, oneInt),
-			prec: d.prec,
+		var remainder big.Int
+		coefficient.QuoRem(d.i, divisor, &remainder)
+		if remainder.Sign() != 0 {
+			applyDivisionRounding(coefficient, &remainder, divisor, mode)
 		}
 	}
-}
-
-func (d Decimal) roundHalfDown() Decimal {
-	if d.prec == 0 {
-		return d
-	}
-	if d.IsNegative() {
-		// Make a positive
-		abs := d.Neg()
-		abs = abs.roundHalfDown()
-		return abs.Neg()
-	}
-
-	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
-	fivePrecision := new(big.Int).Mul(fiveInt, safeGetPrecisionMultiplier(d.prec-1))
-	cmp := rem.Cmp(fivePrecision)
-	if cmp <= 0 {
-		return Decimal{
-			i:    quo,
-			prec: d.prec,
-		}
-	} else {
-		return Decimal{
-			i:    quo.Add(quo, oneInt),
-			prec: d.prec,
-		}
-	}
-}
-
-func (d Decimal) roundHalfEven() Decimal {
-	if d.prec == 0 {
-		return d
-	}
-	if d.IsNegative() {
-		// Make d positive
-		abs := d.Neg()
-		abs = abs.roundHalfEven()
-		return abs.Neg()
-	}
-
-	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
-	fivePrecision := new(big.Int).Mul(fiveInt, safeGetPrecisionMultiplier(d.prec-1))
-	cmp := rem.Cmp(fivePrecision)
-	var resultD Decimal
-	if cmp < 0 {
-		resultD = Decimal{
-			i:    quo,
-			prec: d.prec,
-		}
-	} else if cmp > 0 {
-		resultD = Decimal{
-			i:    quo.Add(quo, oneInt),
-			prec: d.prec,
-		}
-	} else {
-		// Bankers rounding must take place
-		// always round to an even number
-		if quo.Bit(0) == 0 {
-			resultD = Decimal{
-				i:    quo,
-				prec: d.prec,
-			}
-		} else {
-			resultD = Decimal{
-				i:    quo.Add(quo, oneInt),
-				prec: d.prec,
-			}
-		}
-	}
-
-	return resultD
-}
-
-func (d Decimal) roundUnnecessary() Decimal {
-	if d.IsNegative() {
-		// Make d positive
-		abs := d.Neg()
-		abs = abs.roundUnnecessary()
-		return abs.Neg()
-	}
-
-	quo, rem := new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
-	if rem.Sign() != 0 {
-		panic(ErrRoundUnnecessary)
-	}
-	return Decimal{
-		i:    quo,
-		prec: d.prec,
-	}
+	return Decimal{i: coefficient, prec: d.prec}
 }
 
 // validateRoundingMode panics when mode is not one of the documented constants.
