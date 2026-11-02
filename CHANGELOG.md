@@ -8,6 +8,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- General formatting chooses notation after rounding, including exponent carries.
+- Trailing-zero normalization bounds its search by coefficient size and avoids
+  midpoint overflow at extreme scales.
 - Validator translation registration checks nil arguments before accessing
   the translator's locale and returns ErrInvalidArgument consistently.
 - Numeric panics for divide-by-zero, invalid precision, arithmetic overflow,
@@ -57,6 +60,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   actionlint, including expression context availability.
 
 ### Performance
+- Scientific formatting derives exponents directly from coefficients without
+  expanding leading fractional zeros.
 - Separate interval primitives, logarithms, exponentials, and the shared
   precision driver. Document Ziv's enclosure/round/refine strategy and its
   resource budget; encapsulate reusable rounding scratch without changing

@@ -813,9 +813,11 @@ func (d Decimal) StripTrailingZeros() Decimal {
 	}
 
 	// Binary search for the number of trailing zeros k (known k >= 1).
-	lo, hi := 1, d.prec
+	// 10^k > 2^(3*k), so the coefficient bounds the possible tail
+	// independently of its scale. This also keeps midpoints from overflowing.
+	lo, hi := 1, min(d.prec, (d.i.BitLen()-1)/3)
 	for lo < hi {
-		mid := (lo + hi + 1) / 2
+		mid := lo + (hi-lo+1)/2
 		quo.QuoRem(d.i, safeGetPrecisionMultiplier(mid), mod)
 		if mod.Sign() == 0 {
 			lo = mid
@@ -1313,14 +1315,13 @@ func formatScientific(d Decimal, prec int, upper bool) string {
 	neg := d.IsNegative()
 	abs := d.Abs()
 
-	// Determine the exponent: the position of the most significant digit
-	// relative to the decimal point. Work from the canonical string which
-	// already strips trailing zeros but preserves leading structure.
 	digits, exp := significandAndExp(abs)
-
-	// Round digits to the desired precision (prec digits after the first).
 	digits, exp = roundSignificand(digits, exp, prec)
+	return scientificDigits(digits, exp, prec, upper, neg)
+}
 
+// scientificDigits formats an already rounded significand.
+func scientificDigits(digits string, exp, prec int, upper, neg bool) string {
 	// Build mantissa "d.dddd".
 	var mantissa string
 	if prec == 0 {
@@ -1345,49 +1346,14 @@ func formatScientific(d Decimal, prec int, upper bool) string {
 // For convenience the returned digits start with the most significant digit
 // and exp is the base-10 exponent of that digit.
 func significandAndExp(abs Decimal) (digits string, exp int) {
-	// Use canonical form (trailing zeros removed) for computing the
-	// significand; this avoids spurious trailing zeros in the mantissa.
-	s := abs.StripTrailingZeros().String()
-
-	intPart, fracPart, hasDot := strings.Cut(s, ".")
-	if !hasDot {
-		// Pure integer.
-		digits = strings.TrimLeft(intPart, "0")
-		if digits == "" {
-			digits = "0"
-			exp = 0
-			return
-		}
-		exp = len(digits) - 1
-		return
+	if abs.IsZero() {
+		return "0", 0
 	}
-
-	if intPart != "0" {
-		digits = intPart + fracPart
-		// Strip leading zeros (shouldn't usually occur unless input was odd).
-		trimmed := strings.TrimLeft(digits, "0")
-		leadingZeros := len(digits) - len(trimmed)
-		if trimmed == "" {
-			digits = "0"
-			exp = 0
-			return
-		}
-		digits = trimmed
-		exp = len(intPart) - 1 - leadingZeros
-		return
-	}
-
-	// Integer part is "0"; count leading zeros in the fractional part.
-	trimmed := strings.TrimLeft(fracPart, "0")
-	if trimmed == "" {
-		digits = "0"
-		exp = 0
-		return
-	}
-	leadingZeros := len(fracPart) - len(trimmed)
-	digits = trimmed
-	exp = -(leadingZeros + 1)
-	return
+	// Work from the coefficient, never a fixed-point string: a tiny number
+	// may have a short significand but millions of leading fractional zeros.
+	digits = abs.i.Text(10)
+	exp = len(digits) - 1 - abs.prec
+	return strings.TrimRight(digits, "0"), exp
 }
 
 // roundSignificand rounds digits to keep (prec+1) digits (one before the
@@ -1497,7 +1463,7 @@ func formatG(d Decimal, prec int, eVerb rune, hashFlag bool) string {
 		return "0"
 	}
 
-	_, exp := significandAndExp(d.Abs())
+	digits, exp := significandAndExp(d.Abs())
 
 	// Default prec, no # flag: use the shortest-unique representation rules
 	// described on the function comment (eprec=6 for the branch decision).
@@ -1522,32 +1488,43 @@ func formatG(d Decimal, prec int, eVerb rune, hashFlag bool) string {
 		n = prec
 	}
 
+	// Rounding can carry into a new exponent (999.9 -> 1.00e+03).
+	// Choose the notation only after rounding, and reuse those same digits
+	// in both branches so no second rounding changes the decision.
+	digits, exp = roundSignificand(digits, exp, n-1)
 	if exp < -4 || exp >= n {
-		s := formatScientific(d, n-1, upper)
+		s := scientificDigits(digits, exp, n-1, upper, d.IsNegative())
 		if hashFlag {
 			if n == 1 {
-				if eIdx := strings.IndexAny(s, "eE"); eIdx >= 0 && !strings.Contains(s[:eIdx], ".") {
-					s = s[:eIdx] + "." + s[eIdx:]
-				}
+				eIdx := strings.IndexAny(s, "eE")
+				s = s[:eIdx] + "." + s[eIdx:]
 			}
 			return s
 		}
 		return stripGScientific(s)
 	}
-
-	fractional := n - 1 - exp
-	if fractional < 0 {
-		fractional = 0
-	}
-	rescaled := d.Rescale(fractional, RoundHalfEven)
 	if hashFlag {
-		core := rescaled.StringWithTrailingZeros()
-		if fractional == 0 && !strings.Contains(core, ".") {
+		digits += strings.Repeat("0", n-len(digits))
+	} else {
+		digits = strings.TrimRight(digits, "0")
+	}
+	var core string
+	point := exp + 1
+	switch {
+	case point <= 0:
+		core = "0." + strings.Repeat("0", -point) + digits
+	case point < len(digits):
+		core = digits[:point] + "." + digits[point:]
+	default:
+		core = digits + strings.Repeat("0", point-len(digits))
+		if hashFlag {
 			core += "."
 		}
-		return core
 	}
-	return rescaled.String()
+	if d.IsNegative() {
+		core = "-" + core
+	}
+	return core
 }
 
 // minimalSignificantDigits returns the number of leading digits in |d|
