@@ -271,9 +271,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-사용 가능한 오류: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
-`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
-`ErrUnmarshal`.
+사용 가능한 오류: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`, `ErrNoConvergence`, `ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`.
 
 ## 14. 동시성
 

@@ -278,9 +278,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-Verfügbar: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
-`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`,
-`ErrUnmarshal`.
+Verfügbar: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`, `ErrNoConvergence`, `ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`.
 
 ## 14. Nebenläufigkeit
 

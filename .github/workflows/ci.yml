@@ -71,3 +71,43 @@ jobs:
       - name: Test mapstructure integration with race detector
         working-directory: integration/mapstructure
         run: go test -race ./...
+
+  correctness:
+    name: Correctness (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, '386']
+    env:
+      GOARCH: ${{ matrix.arch }}
+      CGO_ENABLED: '0'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Go build cache
+        run: echo "GOCACHE=$RUNNER_TEMP/decimal-correctness-build" >> "$GITHUB_ENV"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: true
+
+      - name: Check reproducible must-succeed references
+        run: |
+          python3 testdata/generate_must_succeed.py
+          git diff --exit-code -- testdata/must_succeed.json
+
+      - name: Independent numerical and state contracts
+        run: go test -count=1 -run 'Test(MustSucceed|Contract|MulWithPrec|DirectArithmetic|Independent)' ./...
+
+      - name: Fuzz exact arithmetic rounding
+        if: matrix.arch == 'amd64'
+        run: go test -run '^$' -fuzz '^FuzzArithmeticCorrectRounding$' -fuzztime=20s -parallel=2
+
+      - name: Fuzz root midpoint correctness
+        if: matrix.arch == 'amd64'
+        run: go test -run '^$' -fuzz '^FuzzRootCorrectRounding$' -fuzztime=20s -parallel=2

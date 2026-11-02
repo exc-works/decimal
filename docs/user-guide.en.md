@@ -291,9 +291,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-Available: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`,
-`ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`,
-`ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`.
+Available: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`, `ErrNoConvergence`, `ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`.
 
 ## 14. Concurrency
 

@@ -7,7 +7,34 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+- `MulWithPrec` rounds the exact product once at an explicitly requested scale,
+  without requiring a `MulExact` intermediate.
+- A maintainer-approved numerical contract, migration notes, independent exact
+  rational/midpoint certificates, a versioned must-succeed corpus, and bounded
+  arithmetic/root fuzzing. CI runs strict correctness checks on amd64 and 386.
+
+### Changed
+- Default Sqrt, ApproxRoot, Ln, Log2, Log10, and Exp precision is now
+  `max(input scale, 20)` decimal places. Log2 previously kept only input scale;
+  the other defaults used a minimum of 30. Explicit WithPrec methods retain
+  their requested scale.
+- Negative integer powers now use HalfEven, matching positive powers, while
+  retaining input scale. For example, `3.00^-1` is now `0.33`, and `2^-1`
+  rounds to zero at scale 0. `0^0=1` is unchanged.
+- Equal-valued instance Max/Min return the receiver's representation, matching
+  the first-operand rule of package Max/Min.
+
 ### Fixed
+- Decoder errors preserve all receiver state, including IsNil and Valid, and
+  consistently wrap ErrUnmarshal while retaining underlying error identities.
+- A valid NullDecimal containing an uninitialized Decimal encodes as numerical
+  zero in JSON/XML/BSON, consistently with Valid and the other encodings.
+- Binary decoding checks its unsigned encoded precision before conversion to
+  native int, preventing signed wrap on 32-bit platforms.
+- Guides now distinguish format-specific null/empty behavior and list all
+  existing error sentinels, including ErrNoConvergence, without extending
+  programmer-error panic classification.
 - High-degree roots refine an exact leading-bit bound before Newton iteration,
   avoiding false iteration exhaustion on ordinary inputs such as the 500th
   root of two at 50 decimal places.

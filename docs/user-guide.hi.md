@@ -271,7 +271,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-उपलब्ध: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`।
+उपलब्ध: `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`, `ErrNoConvergence`, `ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`।
 
 ## 14. समवर्तीता
 

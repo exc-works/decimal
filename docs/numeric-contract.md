@@ -242,6 +242,8 @@ compatibility commitments. Reducing them requires an explicit compatibility
 decision. Internal budgets may change while satisfying numerical correctness,
 the promised successful cases, and documented failure behavior. Tests must
 check unexpected errors and panics as well as values on successful cases.
+The initial concrete corpus and independent verification methods are specified
+in [correctness gates](correctness-gates.md), for review with the release changes.
 
 Arithmetic does not mutate operands. Exposed big.Int and big.Rat values are
 independent copies; internal sharing is allowed only for read-only data.
