@@ -548,7 +548,7 @@ integration suites. Passing samples is evidence, not a proof for every input.
 - Changelog format: <https://keepachangelog.com/>
 - changelog file: [`CHANGELOG.md`](CHANGELOG.md)
 - GitHub release trigger: tags matching `v*.*.*`
-- [v0.8.0 release notes](docs/releases/v0.8.0.md)
+- [v0.8.0 release notes (12 languages)](docs/releases/v0.8.0.md#languages)
 - [Maintainer release procedure](docs/releasing.md)
 
 Install a published version explicitly (v0.8.0 becomes available after its tag

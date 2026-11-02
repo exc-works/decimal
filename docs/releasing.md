@@ -12,6 +12,12 @@ that PR has merged and CI has passed on the exact commit to be tagged.
    Use absolute, tag-pinned links in that file because it becomes the GitHub
    release body. Keep migration guides, README, and translated guide links in
    sync with the version's approved numerical contract.
+   Match the languages of `docs/user-guide.<locale>.md`: English stays in the
+   main release file and each other language uses `docs/releases/<tag>.<locale>.md`.
+   Add an absolute, tag-pinned language index to the main file so the GitHub
+   release body links directly to every translation. Keep compatibility warnings,
+   numerical examples, error handling, and benchmark scope aligned in all versions;
+   each translated guide should link to its corresponding release notes.
 3. Review the PR, including `@codex review`, and wait for Test and both
    Correctness jobs. These cover workflow lint, race, BSON, mapstructure,
    reference regeneration, independent numerical checks, and bounded fuzzing.

@@ -1,6 +1,6 @@
 # Руководство пользователя (Русский)
 
-[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md) · [Примечания к выпуску](releases/v0.8.0.ru.md)
 
 В этом руководстве показаны практические шаблоны использования `github.com/exc-works/decimal`.
 

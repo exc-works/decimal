@@ -1,7 +1,7 @@
 # v0.7.0 → v0.8.0 升级说明
 
 [English](numeric-contract-migration.md) · [数值契约](numeric-contract.md) ·
-[发布说明](releases/v0.8.0.md)
+[发布说明](releases/v0.8.0.zh.md)
 
 v0.8.0 包含会改变计算结果和编码输出的修复。模块路径仍为
 `github.com/exc-works/decimal`，最低 Go 版本仍为 1.26.0；没有移除 v0.7.0

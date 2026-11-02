@@ -12,6 +12,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 This release changes observable numerical and encoding behavior. Review the
 [upgrade guide](docs/numeric-contract-migration.md) before updating from v0.7.0;
 a [Chinese guide](docs/upgrade-v0.8.0.zh.md) is also available.
+The [release notes](docs/releases/v0.8.0.md#languages) cover all 12 guide languages.
 
 ### Added
 - `MulWithPrec` rounds the exact product once at an explicitly requested scale,
