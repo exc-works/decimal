@@ -271,9 +271,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-利用可能なもの: `ErrInvalidFormat`、`ErrInvalidPrecision`、`ErrOverflow`、
-`ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidLog`、`ErrRoundUnnecessary`、
-`ErrUnmarshal`。
+利用可能なもの: `ErrInvalidFormat`、`ErrInvalidPrecision`、`ErrOverflow`、`ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidRoot`、`ErrInvalidLog`、`ErrNoConvergence`、`ErrRoundUnnecessary`、`ErrUnmarshal`、`ErrInvalidArgument`。
 
 ## 14. 並行性
 

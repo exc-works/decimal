@@ -450,7 +450,11 @@ if r.Amount.Valid {
 ```
 
 `NullDecimal` implements `sql.Scanner`, `driver.Valuer`, JSON/YAML/Text/BSON
-marshaling, and gin `UnmarshalParam`. `null`/empty input sets `Valid=false`.
+marshaling, and gin `UnmarshalParam`. Valid alone determines whether encoding
+produces an empty value; Valid=true with an uninitialized Decimal encodes as
+valid zero. Null/empty decoding is entry-point-specific: JSON/SQL empty strings
+are errors, while empty Text/Param clears the nullable value. See the
+[decoding table](docs/numeric-contract.md#decoding-states-and-nullable-values).
 
 ## Error Handling
 
@@ -470,9 +474,9 @@ after `recover`. Arithmetic methods documented to panic keep that behavior.
   within the iteration or precision budget
 - `ErrInvalidLog` — logarithm of a non-positive value
 - `ErrRoundUnnecessary` — panic when rounding is required under `RoundUnnecessary`
-- `ErrUnmarshal` — malformed binary/YAML/BSON values, unsupported decode source
-  types, or non-finite floating-point decode inputs; text parsing errors can
-  retain `ErrInvalidFormat`
+- `ErrUnmarshal` — returned decoding/Scan errors across JSON, YAML, XML, BSON,
+  Text/Param, Binary, and supported DecodeHook targets; underlying identities
+  remain available, including `ErrInvalidFormat` for invalid numerical text
 - `ErrInvalidArgument` — invalid setup argument (e.g. nil validator/translator)
 
 ```go
@@ -515,16 +519,26 @@ conversion returns `false`; these APIs do not return `ErrOverflow`.
 - even root of negative values returns error
 - root and transcendental calculations return `ErrNoConvergence` if their budget is exhausted;
   always check the returned error before using the result
-- `Quo` has a special integer-division path when both precisions are `0`
+- `Quo` rounds to the larger input scale, including scale 0 for integer inputs
 - binary encoding normalizes trailing zeros (`7.50` and `7.5000` can encode identically)
 
 ## Migration Notes
+
+For the forthcoming contract changes, see the
+[unreleased migration notes](docs/numeric-contract-migration.md).
 
 If you are migrating from older internal variants of this library:
 
 - rely only on APIs present in this repository
 - update formatting-sensitive code if it depended on fixed-scale output (`StringWithTrailingZeros`)
 - validate binary compatibility if old code expected trailing-zero preservation
+
+## Correctness Checks
+
+The [correctness gates](docs/correctness-gates.md) combine independently
+certified numerical references, bounded property fuzzing, and a versioned
+must-succeed corpus. They run alongside the complete race, BSON and framework
+integration suites. Passing samples is evidence, not a proof for every input.
 
 ## Release and Versioning
 

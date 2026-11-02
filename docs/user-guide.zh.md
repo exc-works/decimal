@@ -283,9 +283,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-可用错误：`ErrInvalidFormat`、`ErrInvalidPrecision`、`ErrOverflow`、
-`ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidLog`、`ErrRoundUnnecessary`、
-`ErrUnmarshal`。
+可用错误：`ErrInvalidFormat`、`ErrInvalidPrecision`、`ErrOverflow`、`ErrDivideByZero`、`ErrNegativeRoot`、`ErrInvalidRoot`、`ErrInvalidLog`、`ErrNoConvergence`、`ErrRoundUnnecessary`、`ErrUnmarshal`、`ErrInvalidArgument`。
 
 ## 14. 并发
 

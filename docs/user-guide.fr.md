@@ -269,7 +269,7 @@ if errors.Is(err, decimal.ErrInvalidFormat) {
 }
 ```
 
-Disponibles : `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidLog`, `ErrRoundUnnecessary`, `ErrUnmarshal`.
+Disponibles : `ErrInvalidFormat`, `ErrInvalidPrecision`, `ErrOverflow`, `ErrDivideByZero`, `ErrNegativeRoot`, `ErrInvalidRoot`, `ErrInvalidLog`, `ErrNoConvergence`, `ErrRoundUnnecessary`, `ErrUnmarshal`, `ErrInvalidArgument`.
 
 ## 14. Concurrence
 
