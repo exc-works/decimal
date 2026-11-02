@@ -360,7 +360,8 @@ func (d Decimal) SafeAdd(d2 Decimal) Decimal {
 	return d.Add(d2).requireNonNegative()
 }
 
-// AddRaw returns d + i while preserving d's precision.
+// AddRaw adds i coefficient units, preserving d's precision.
+// Its value is d + i*10^(-d.Precision()); for example, 1.23.AddRaw(1) is 1.24.
 func (d Decimal) AddRaw(i int64) Decimal {
 	d = initializeIfNeeded(d)
 	return Decimal{
@@ -384,7 +385,8 @@ func (d Decimal) SafeSub(d2 Decimal) Decimal {
 	return d.Sub(d2).requireNonNegative()
 }
 
-// SubRaw returns d - i while preserving d's precision.
+// SubRaw subtracts i coefficient units, preserving d's precision.
+// Its value is d - i*10^(-d.Precision()); for example, 1.23.SubRaw(1) is 1.22.
 func (d Decimal) SubRaw(i int64) Decimal {
 	d = initializeIfNeeded(d)
 	return Decimal{
@@ -411,6 +413,47 @@ func (d Decimal) Mul(d2 Decimal, roundingMode RoundingMode) Decimal {
 		}
 	}
 	return Decimal{i: product, prec: max(d.prec, d2.prec)}
+}
+
+// MulWithPrec returns d*d2 rounded once to prec decimal places using roundingMode.
+// It pads with zeros when prec exceeds the exact product's scale, and does not
+// require an intermediate Decimal at the sum of the input scales.
+// It panics if prec is negative, roundingMode is invalid, or rounding is needed
+// with RoundUnnecessary. Like other arithmetic, allocations depend on the
+// coefficient sizes and the requested scale.
+func (d Decimal) MulWithPrec(d2 Decimal, prec int, roundingMode RoundingMode) Decimal {
+	requireNonNegativePrecision(prec)
+	validateRoundingMode(roundingMode)
+	d = initializeIfNeeded(d)
+	d2 = initializeIfNeeded(d2)
+	product := new(big.Int).Mul(d.i, d2.i)
+	if product.Sign() == 0 {
+		return Decimal{i: product, prec: prec}
+	}
+	// Two nonnegative int scales fit in uint even when their int sum overflows.
+	scale := uint(d.prec) + uint(d2.prec)
+	if scale < uint(prec) {
+		product.Mul(product, safeGetPrecisionMultiplier(int(uint(prec)-scale)))
+	} else if scale > uint(prec) {
+		discard := scale - uint(prec)
+		var remainder big.Int
+		divisor := tenInt
+		if discard > uint(product.BitLen()) {
+			// |product| < 2^BitLen < 10^discard/2. The rounded coefficient
+			// therefore depends only on its sign and that it is inexact.
+			// A signed remainder of 1 over 10 has the same rounding decisions,
+			// avoiding an enormous power of ten for a tiny result.
+			remainder.SetInt64(int64(product.Sign()))
+			product.SetInt64(0)
+		} else {
+			divisor = safeGetPrecisionMultiplier(int(discard))
+			product.QuoRem(product, divisor, &remainder)
+		}
+		if remainder.Sign() != 0 {
+			applyDivisionRounding(product, &remainder, divisor, roundingMode)
+		}
+	}
+	return Decimal{i: product, prec: prec}
 }
 
 // MulDown returns d * d2 rounded down.
@@ -563,9 +606,9 @@ func (d Decimal) Remainder() (intPart *big.Int, fractionPart *big.Int) {
 	return new(big.Int).QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), new(big.Int))
 }
 
-// Power returns d raised to power at d's precision. Positive powers use
-// RoundHalfEven; negative powers use RoundUp (away from zero). Only the final
-// result is rounded. It panics on a negative power of zero or when an exact
+// Power returns d raised to power at d's precision using RoundHalfEven.
+// Only the final result is rounded; zero to the zeroth power is defined as 1.
+// It panics on a negative power of zero or when an exact
 // intermediate would exceed the supported precision or integer bit length.
 func (d Decimal) Power(power int64) Decimal {
 	d = initializeIfNeeded(d)
@@ -601,17 +644,15 @@ func (d Decimal) Power(power int64) Decimal {
 	coeff := new(big.Int).Exp(base.i, new(big.Int).SetUint64(magnitude), nil)
 	exact := Decimal{i: coeff, prec: base.prec * int(magnitude)}
 	if power < 0 {
-		return One.QuoWithPrec(exact, d.prec, RoundUp)
+		return One.QuoWithPrec(exact, d.prec, RoundHalfEven)
 	}
 	return exact.Rescale(d.prec, RoundHalfEven)
 }
 
 // Sqrt returns an approximate square root of d.
 //
-// Note: since v0.3.0 the output precision is max(d.Precision(), 30), which is
-// a breaking change relative to v0.2.x where the result matched the receiver
-// precision exactly. Callers that need the previous behavior should use
-// SqrtWithPrec(d.Precision()) explicitly.
+// The default output precision is max(d.Precision(), 20) decimal places.
+// Use SqrtWithPrec(d.Precision()) to request the receiver scale explicitly.
 //
 // It returns an error wrapping ErrNegativeRoot when d is negative, or
 // ErrNoConvergence when the exact calculation exceeds its resource budget. The
@@ -638,10 +679,8 @@ func (d Decimal) SqrtWithPrec(prec int) (Decimal, error) {
 // ApproxRoot returns an approximate integer-th root of d using iterative
 // refinement.
 //
-// Note: since v0.3.0 the output precision is max(d.Precision(), 30), which is
-// a breaking change relative to v0.2.x where the result matched the receiver
-// precision exactly. Callers that need the previous behavior should use
-// ApproxRootWithPrec(root, d.Precision()) explicitly.
+// The default output precision is max(d.Precision(), 20) decimal places.
+// Use ApproxRootWithPrec(root, d.Precision()) to request the receiver scale explicitly.
 //
 // It returns an error wrapping ErrInvalidRoot when root is not strictly
 // positive, ErrNegativeRoot when d is negative and root is even, or
@@ -693,11 +732,12 @@ func (d Decimal) ApproxRootWithPrec(root int64, prec int) (Decimal, error) {
 	return roundedIntegerRoot(d, root, prec)
 }
 
-// Log2 returns log2(d), rounded with RoundHalfEven to d.Precision() places.
+// Log2 returns log2(d), correctly rounded with RoundHalfEven to
+// max(d.Precision(), 20) decimal places.
 // It panics for non-positive inputs or if the precision budget is exhausted.
 // Use Log2WithPrec to request an explicit precision and receive errors.
 func (d Decimal) Log2() Decimal {
-	result, err := d.Log2WithPrec(d.prec)
+	result, err := d.Log2WithPrec(workingLogPrec(d))
 	if err != nil {
 		panic(err)
 	}
@@ -1087,17 +1127,17 @@ func (d Decimal) Precision() int {
 	return d.prec
 }
 
-// Max returns the larger of d and d2.
+// Max returns the larger of d and d2, returning d itself when their values are equal.
 func (d Decimal) Max(d2 Decimal) Decimal {
-	if d.GT(d2) {
+	if d.Cmp(d2) >= 0 {
 		return d
 	}
 	return d2
 }
 
-// Min returns the smaller of d and d2.
+// Min returns the smaller of d and d2, returning d itself when their values are equal.
 func (d Decimal) Min(d2 Decimal) Decimal {
-	if d.LT(d2) {
+	if d.Cmp(d2) <= 0 {
 		return d
 	}
 	return d2
@@ -1179,7 +1219,7 @@ func (d Decimal) Clone() Decimal {
 //	        callers do not silently truncate fractional digits.
 //	%f      fixed-point notation; precision selects fractional digits
 //	%e, %E  scientific notation (default precision 6)
-//	%g, %G  the shorter of %e or %f for the given precision
+//	%g, %G  fixed or scientific form chosen by the rounded decimal exponent
 //	%b      binary representation of the unscaled big.Int with a scale tag
 //
 // Width, precision, '-', '+', ' ', and '0' flags are honored where they make

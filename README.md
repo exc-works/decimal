@@ -123,6 +123,7 @@ If parsing results in zero, precision is normalized to `0`.
 - `Sub(Decimal)` / `SafeSub(Decimal)` / `SubRaw(int64)`
 - `Mul(Decimal, decimal.RoundingMode)`
 - `MulDown(Decimal)`
+- `MulWithPrec(Decimal, prec, RoundingMode)`
 - `MulExact(Decimal)` (exact multiplication, no rounding, precision = `d.prec + d2.prec`)
 - `QuoWithPrec(Decimal, prec, decimal.RoundingMode)`
 - `Quo(Decimal, decimal.RoundingMode)`
@@ -137,12 +138,16 @@ If parsing results in zero, precision is normalized to `0`.
 - `Ln() (Decimal, error)` / `LnWithPrec(prec)` (input must be > 0)
 - `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
 
+See the [numerical contract](docs/numeric-contract.md) and
+[unreleased migration notes](docs/numeric-contract-migration.md) for precision,
+rounding, representation, and compatibility rules.
+
 Multiplication and division round directly at the final scale. Comparisons use
 sign and conservative magnitude bounds before aligning scales; terminating
 rational conversion extracts denominator factors in batches.
 
-`Power` rounds only its final result to the receiver's scale: positive powers
-use `RoundHalfEven`, negative powers use `RoundUp` (away from zero). Zero to a
+`Power` rounds only its final result to the receiver's scale using
+`RoundHalfEven` for both positive and negative powers; `0^0` is defined as 1. Zero to a
 negative power panics. Exact intermediates beyond the supported `MaxInt32`
 scale or coefficient bit-length bound also panic, including impractical
 `MinInt64` powers of values other than `1` and `-1`.
@@ -156,8 +161,9 @@ the integer iteration budget is exhausted.
 
 Logarithms and exponentials certify `RoundHalfEven` at the requested scale
 using outward-rounded intervals, including series remainders. Their constants
-and series lengths adapt to the working precision. `Log2` retains its receiver
-scale; the other default methods use `max(d.Precision(), 30)`.
+and series lengths adapt to the working precision. All default root, logarithm
+and exponential methods use `max(d.Precision(), 20)` decimal places.
+Use a `WithPrec` variant for an explicit output scale.
 
 This follows a bounded **Ziv strategy**: evaluate with guard precision, accept
 only when both interval endpoints round to the same decimal, and otherwise

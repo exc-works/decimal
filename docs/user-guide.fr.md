@@ -1,5 +1,7 @@
 # Guide d'utilisation (Français)
 
+[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+
 Ce guide présente des modèles d'utilisation pratiques pour `github.com/exc-works/decimal`.
 
 ## 1. Installation
@@ -52,6 +54,7 @@ a := decimal.MustFromString("2.555")
 b := decimal.MustFromString("1.00")
 
 mul := a.Mul(b, decimal.RoundHalfEven)
+mul4 := a.MulWithPrec(b, 4, decimal.RoundHalfEven)
 quo := a.QuoWithPrec(decimal.MustFromString("3"), 2, decimal.RoundHalfEven)
 ```
 

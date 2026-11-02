@@ -52,8 +52,8 @@ func TestPowerNegativeWithoutIntermediateRounding(t *testing.T) {
 		input, want string
 		power       int64
 	}{
-		{"0.1", "100", -2}, {"0.2", "25", -2}, {"0.3", "11.2", -2},
-		{"-0.3", "-37.1", -3}, {"1.5", "0.5", -2},
+		{"0.1", "100", -2}, {"0.2", "25", -2}, {"0.3", "11.1", -2},
+		{"-0.3", "-37.0", -3}, {"1.5", "0.4", -2},
 		{"1.00", "1", math.MinInt64}, {"-1.0", "1", math.MinInt64},
 	} {
 		t.Run(tc.input, func(t *testing.T) {
