@@ -778,22 +778,16 @@ func (d Decimal) Rescale(prec int, roundingMode RoundingMode) Decimal {
 	}
 
 	diff := d.prec - prec
-	var newI = new(big.Int)
 	if diff < 0 {
-		// Mul never should round
-		newI.Mul(d.i, safeGetPrecisionMultiplier(-diff))
-	} else {
-		roundedDecimal := Decimal{
-			i:    d.i,
-			prec: diff,
-		}.round(roundingMode)
+		// Increasing scale is exact.
 		return Decimal{
-			i:    roundedDecimal.i,
+			i:    new(big.Int).Mul(d.i, safeGetPrecisionMultiplier(-diff)),
 			prec: prec,
 		}
 	}
+	rounded := Decimal{i: d.i, prec: diff}.round(roundingMode)
 	return Decimal{
-		i:    newI,
+		i:    rounded.i,
 		prec: prec,
 	}
 }
@@ -928,11 +922,11 @@ func (d Decimal) SignificantFigures(figures int, roundingMode RoundingMode) Deci
 	// Round to tens/hundreds/etc. when significant figures fall within the integer part.
 	roundShift := d.prec - targetPrec
 	rounded := Decimal{
-		i:    new(big.Int).Set(d.i),
+		i:    d.i,
 		prec: roundShift,
 	}.round(roundingMode)
 	return Decimal{
-		i:    new(big.Int).Mul(rounded.i, safeGetPrecisionMultiplier(-targetPrec)),
+		i:    rounded.i.Mul(rounded.i, safeGetPrecisionMultiplier(-targetPrec)),
 		prec: 0,
 	}
 }
