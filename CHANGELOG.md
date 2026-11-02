@@ -60,6 +60,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   actionlint, including expression context availability.
 
 ### Performance
+- Multiply and divide coefficients directly at the final scale, short-circuit
+  comparisons by sign and magnitude bounds, and batch rational denominator
+  factorization instead of repeatedly dividing one factor at a time.
 - Scientific formatting derives exponents directly from coefficients without
   expanding leading fractional zeros.
 - Separate interval primitives, logarithms, exponentials, and the shared

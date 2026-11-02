@@ -137,6 +137,10 @@ If parsing results in zero, precision is normalized to `0`.
 - `Ln() (Decimal, error)` / `LnWithPrec(prec)` (input must be > 0)
 - `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
 
+Multiplication and division round directly at the final scale. Comparisons use
+sign and conservative magnitude bounds before aligning scales; terminating
+rational conversion extracts denominator factors in batches.
+
 `Power` rounds only its final result to the receiver's scale: positive powers
 use `RoundHalfEven`, negative powers use `RoundUp` (away from zero). Zero to a
 negative power panics. Exact intermediates beyond the supported `MaxInt32`
