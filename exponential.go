@@ -20,9 +20,10 @@ func certifiedExp(d Decimal, prec int) (Decimal, error) {
 	negative := d.IsNegative()
 	r := d.BigRat()
 	r.Abs(r)
-	// Since e > 2 and 16^(prec+1) > 2*10^prec, this certifies rounding to
-	// zero for very negative inputs without constructing an enormous e^|x|.
-	if negative && r.Cmp(new(big.Rat).SetInt64(int64(4*(prec+1)))) >= 0 {
+	// The first five positive Taylor terms give exp(5/2) > 10. Hence
+	// |x| >= (5/2)*(prec+1) implies exp(-|x|) < 10^-(prec+1), strictly
+	// below half a decimal unit. Certify zero without constructing e^|x|.
+	if negative && r.Cmp(new(big.Rat).SetFrac64(int64(5*(prec+1)), 2)) >= 0 {
 		return NewWithPrec(0, prec), nil
 	}
 	// e < 10 implies e^|x| < 10^ceil(|x|). Reserve these integer digits as

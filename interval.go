@@ -16,7 +16,13 @@ func ceilQuotient(a, b *big.Int) *big.Int {
 // ceilQuotientTo may overwrite a when the caller owns it. b is positive.
 func ceilQuotientTo(quotient, a, b *big.Int) *big.Int {
 	quotient.Neg(a)
-	quotient.Div(quotient, b)
+	if bits := uint(b.BitLen() - 1); b.Sign() > 0 && b.TrailingZeroBits() == bits {
+		// Rsh is floor division, including for negative integers. Thus
+		// -floor(-a / 2^bits) is the required ceiling, with no long division.
+		quotient.Rsh(quotient, bits)
+	} else {
+		quotient.Div(quotient, b)
+	}
 	return quotient.Neg(quotient)
 }
 
@@ -37,9 +43,16 @@ func multiplyPositiveBounds(a, b fixedInterval, scale *big.Int) fixedInterval {
 // Series loops alternate destinations so both objects and limb buffers can
 // be reused without overwriting multiplication inputs.
 func multiplyPositiveBoundsTo(dst, a, b fixedInterval, scale *big.Int) {
-	dst.lo.Mul(a.lo, b.lo).Div(dst.lo, scale)
+	dst.lo.Mul(a.lo, b.lo)
 	dst.hi.Mul(a.hi, b.hi)
-	ceilQuotientTo(dst.hi, dst.hi, scale)
+	if bits := uint(scale.BitLen() - 1); scale.Sign() > 0 && scale.TrailingZeroBits() == bits {
+		dst.lo.Rsh(dst.lo, bits)
+		dst.hi.Neg(dst.hi).Rsh(dst.hi, bits).Neg(dst.hi)
+	} else {
+		// Keep general scales supported by the interval helpers.
+		dst.lo.Div(dst.lo, scale)
+		ceilQuotientTo(dst.hi, dst.hi, scale)
+	}
 }
 
 func divideBounds(a, b fixedInterval, scale *big.Int) fixedInterval {
