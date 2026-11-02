@@ -1,8 +1,7 @@
 # Numerical contract
 
-These are the maintainer-approved rules for the forthcoming release containing
-the numerical contract changes. They do not redefine earlier releases. The
-release number will be assigned during release preparation; see
+These are the maintainer-approved rules for v0.8.0. They do not redefine earlier
+releases. See the
 [migration notes](numeric-contract-migration.md) for observable changes.
 
 This document is the primary specification for the numerical operations,
@@ -242,8 +241,8 @@ compatibility commitments. Reducing them requires an explicit compatibility
 decision. Internal budgets may change while satisfying numerical correctness,
 the promised successful cases, and documented failure behavior. Tests must
 check unexpected errors and panics as well as values on successful cases.
-The initial concrete corpus and independent verification methods are specified
-in [correctness gates](correctness-gates.md), for review with the release changes.
+The v0.8.0 corpus and independent verification methods are specified in
+[correctness gates](correctness-gates.md).
 
 Arithmetic does not mutate operands. Exposed big.Int and big.Rat values are
 independent copies; internal sharing is allowed only for read-only data.

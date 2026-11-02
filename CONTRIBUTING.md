@@ -61,13 +61,7 @@ the default build, BSON build, and mapstructure integration separately.
 
 ## Release Process
 
-1. Update `CHANGELOG.md` under a new version heading.
-2. Commit and merge to the default branch.
-3. Create an annotated tag, for example:
-
-```bash
-git tag -a v0.1.0 -m "release v0.1.0"
-git push origin v0.1.0
-```
-
-4. The `release.yml` workflow publishes a GitHub release from the tag.
+Follow the [maintainer release procedure](docs/releasing.md). Every release tag
+must include `docs/releases/<tag>.md`; the release workflow publishes that
+reviewed text together with GitHub's generated change list. Release preparation
+PRs do not create tags or publish releases.

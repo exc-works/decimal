@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-02
+
+This release changes observable numerical and encoding behavior. Review the
+[upgrade guide](docs/numeric-contract-migration.md) before updating from v0.7.0;
+a [Chinese guide](docs/upgrade-v0.8.0.zh.md) is also available.
+The [release notes](docs/releases/v0.8.0.md#languages) cover all 12 guide languages.
+
 ### Added
 - `MulWithPrec` rounds the exact product once at an explicitly requested scale,
   without requiring a `MulExact` intermediate.
@@ -90,6 +97,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   actionlint, including expression context availability.
 
 ### Performance
+- Avoid unused quotient/remainder results in integer inspection and formatting.
+  Integer IsInteger/Int64/Uint64 queries at scale zero allocate no memory, and
+  tiny-value inspection avoids constructing powers of ten from enormous scales.
+- Bypass rational construction for integer floating conversions, preserving
+  target-format rounding and exactness flags. Reuse owned buffers in rounded
+  rational construction and bypass factorization for exact integer rationals.
+- Unify Rescale rounding with signed quotient/remainder arithmetic, remove
+  duplicate sign-recursion and tie handling, and reuse owned SignificantFigures
+  results. [Allocation benchmarks](docs/allocation-benchmarks.md) document the
+  measured changes without introducing shared mutable scratch or new caches.
 - Use directed shifts for binary interval scales, select logarithm reduction
   direction using bounded integer work estimates instead of unconditionally
   inverting inputs below one, and certify more negative exponentials
@@ -299,7 +316,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - JSON/YAML/Text/Binary/SQL serialization support.
 - Extensive unit tests, examples, and benchmarks.
 
-[Unreleased]: https://github.com/exc-works/decimal/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/exc-works/decimal/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/exc-works/decimal/releases/tag/v0.8.0
 [0.7.0]: https://github.com/exc-works/decimal/releases/tag/v0.7.0
 [0.6.0]: https://github.com/exc-works/decimal/releases/tag/v0.6.0
 [0.5.0]: https://github.com/exc-works/decimal/releases/tag/v0.5.0

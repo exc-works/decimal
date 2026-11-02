@@ -1,6 +1,6 @@
 # 사용자 가이드 (한국어)
 
-[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md) · [릴리스 노트](releases/v0.8.0.ko.md)
 
 이 가이드는 `github.com/exc-works/decimal`의 실용적인 사용 패턴을 보여줍니다.
 

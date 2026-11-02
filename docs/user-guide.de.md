@@ -1,6 +1,6 @@
 # Benutzerhandbuch (Deutsch)
 
-[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md) · [Versionshinweise](releases/v0.8.0.de.md)
 
 Dieser Leitfaden zeigt praktische Verwendungsmuster für `github.com/exc-works/decimal`.
 

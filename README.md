@@ -139,7 +139,7 @@ If parsing results in zero, precision is normalized to `0`.
 - `Exp() (Decimal, error)` / `ExpWithPrec(prec)` (Taylor series with argument reduction)
 
 See the [numerical contract](docs/numeric-contract.md) and
-[unreleased migration notes](docs/numeric-contract-migration.md) for precision,
+[v0.8.0 upgrade guide](docs/numeric-contract-migration.md) for precision,
 rounding, representation, and compatibility rules.
 
 Multiplication and division round directly at the final scale. Comparisons use
@@ -524,8 +524,10 @@ conversion returns `false`; these APIs do not return `ErrOverflow`.
 
 ## Migration Notes
 
-For the forthcoming contract changes, see the
-[unreleased migration notes](docs/numeric-contract-migration.md).
+For v0.7.0 → v0.8.0, read the [upgrade guide](docs/numeric-contract-migration.md)
+or [中文升级说明](docs/upgrade-v0.8.0.zh.md). The release changes default mathematical
+output scales, negative-power rounding, panic payloads, and nullable encodings;
+it also fixes numerical results that callers may have previously recorded.
 
 If you are migrating from older internal variants of this library:
 
@@ -546,12 +548,14 @@ integration suites. Passing samples is evidence, not a proof for every input.
 - Changelog format: <https://keepachangelog.com/>
 - changelog file: [`CHANGELOG.md`](CHANGELOG.md)
 - GitHub release trigger: tags matching `v*.*.*`
+- [v0.8.0 release notes (12 languages)](docs/releases/v0.8.0.md#languages)
+- [Maintainer release procedure](docs/releasing.md)
 
-Example:
+Install a published version explicitly (v0.8.0 becomes available after its tag
+is published):
 
 ```bash
-git tag -a v0.1.0 -m "release v0.1.0"
-git push origin v0.1.0
+go get github.com/exc-works/decimal@v0.8.0
 ```
 
 ### BSON support (optional)

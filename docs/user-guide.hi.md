@@ -1,6 +1,6 @@
 # उपयोगकर्ता मार्गदर्शिका (हिंदी)
 
-[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md) · [रिलीज़ नोट्स](releases/v0.8.0.hi.md)
 
 यह मार्गदर्शिका `github.com/exc-works/decimal` के व्यावहारिक उपयोग पैटर्न दिखाती है।
 

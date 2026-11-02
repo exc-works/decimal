@@ -17,6 +17,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify versioned release notes
+        env:
+          RELEASE_NOTES: docs/releases/${{ github.ref_name }}.md
+        run: test -s "$RELEASE_NOTES"
+
       - name: Configure Go build cache
         run: echo "GOCACHE=$RUNNER_TEMP/decimal-go-build" >> "$GITHUB_ENV"
 
@@ -43,4 +48,5 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: docs/releases/${{ github.ref_name }}.md
           generate_release_notes: true
