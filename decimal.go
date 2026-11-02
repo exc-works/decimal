@@ -596,8 +596,15 @@ func (d Decimal) Mod(d2 Decimal) Decimal {
 
 // IntPart returns the integer part of d.
 func (d Decimal) IntPart() *big.Int {
-	intPart, _ := d.Remainder()
-	return intPart
+	d = initializeIfNeeded(d)
+	if d.prec == 0 {
+		return new(big.Int).Set(d.i)
+	}
+	if d.prec >= d.i.BitLen() {
+		// |coefficient| < 2^BitLen <= 10^prec, so the integer part is zero.
+		return new(big.Int)
+	}
+	return new(big.Int).Quo(d.i, safeGetPrecisionMultiplier(d.prec))
 }
 
 // Remainder returns the integer part and fractional part of d.
@@ -1044,8 +1051,15 @@ func (d Decimal) IsPositive() bool {
 
 // IsInteger returns true if d has no fractional part.
 func (d Decimal) IsInteger() bool {
-	_, fractionPart := d.Remainder()
-	return fractionPart.Sign() == 0
+	d = initializeIfNeeded(d)
+	if d.prec == 0 || d.i.Sign() == 0 {
+		return true
+	}
+	if d.prec >= d.i.BitLen() {
+		return false
+	}
+	var remainder big.Int
+	return remainder.Rem(d.i, safeGetPrecisionMultiplier(d.prec)).Sign() == 0
 }
 
 // HasFraction returns true if d has a fractional part.
@@ -1100,7 +1114,18 @@ func (d Decimal) Float32() (float32, bool) {
 
 // Int64 returns d as an int64 if it is an exact integer in range.
 func (d Decimal) Int64() (int64, bool) {
-	intPart, fractionPart := d.Remainder()
+	d = initializeIfNeeded(d)
+	if d.prec == 0 || d.i.Sign() == 0 {
+		if !d.i.IsInt64() {
+			return 0, false
+		}
+		return d.i.Int64(), true
+	}
+	if d.prec >= d.i.BitLen() {
+		return 0, false
+	}
+	var intPart, fractionPart big.Int
+	intPart.QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), &fractionPart)
 	if fractionPart.Sign() != 0 || !intPart.IsInt64() {
 		return 0, false
 	}
@@ -1109,8 +1134,22 @@ func (d Decimal) Int64() (int64, bool) {
 
 // Uint64 returns d as a uint64 if it is a non-negative exact integer in range.
 func (d Decimal) Uint64() (uint64, bool) {
-	intPart, fractionPart := d.Remainder()
-	if fractionPart.Sign() != 0 || intPart.Sign() < 0 || !intPart.IsUint64() {
+	d = initializeIfNeeded(d)
+	if d.i.Sign() < 0 {
+		return 0, false
+	}
+	if d.prec == 0 || d.i.Sign() == 0 {
+		if !d.i.IsUint64() {
+			return 0, false
+		}
+		return d.i.Uint64(), true
+	}
+	if d.prec >= d.i.BitLen() {
+		return 0, false
+	}
+	var intPart, fractionPart big.Int
+	intPart.QuoRem(d.i, safeGetPrecisionMultiplier(d.prec), &fractionPart)
+	if fractionPart.Sign() != 0 || !intPart.IsUint64() {
 		return 0, false
 	}
 	return intPart.Uint64(), true
@@ -1239,7 +1278,7 @@ func (d Decimal) Format(f fmt.State, verb rune) {
 			fmt.Fprintf(f, "%%!d(decimal.Decimal=%s)", dInit.String())
 			return
 		}
-		intPart, _ := dInit.Remainder()
+		intPart := dInit.IntPart()
 		core = intPart.String()
 		if prec, ok := f.Precision(); ok {
 			neg := strings.HasPrefix(core, "-")
