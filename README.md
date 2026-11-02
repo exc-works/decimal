@@ -147,6 +147,8 @@ negative power panics. Exact intermediates beyond the supported `MaxInt32`
 scale or coefficient bit-length bound also panic, including impractical
 `MinInt64` powers of values other than `1` and `-1`.
 
+Roots resolve an exact leading-bit upper bound before bounded Newton refinement,
+so high degrees do not spend the iteration budget shrinking a loose initial guess.
 Roots use exact integer arithmetic and exact midpoint comparisons for
 `RoundHalfEven`. Nontrivial root calculations return `ErrNoConvergence` if
 the input scale, degree, or degree times output scale exceeds `1<<17`, or if

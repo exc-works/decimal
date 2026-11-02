@@ -8,6 +8,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ## [Unreleased]
 
 ### Fixed
+- High-degree roots refine an exact leading-bit bound before Newton iteration,
+  avoiding false iteration exhaustion on ordinary inputs such as the 500th
+  root of two at 50 decimal places.
 - General formatting chooses notation after rounding, including exponent carries.
 - Trailing-zero normalization bounds its search by coefficient size and avoids
   midpoint overflow at extreme scales.

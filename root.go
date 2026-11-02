@@ -3,6 +3,7 @@ package decimal
 import (
 	"fmt"
 	"math/big"
+	"math/bits"
 )
 
 // roundedIntegerRoot obtains the coefficient below the exact root, then
@@ -35,7 +36,7 @@ func roundedIntegerRoot(d Decimal, root int64, prec int) (Decimal, error) {
 	return Decimal{i: floor, prec: prec}, nil
 }
 
-// integerRoot returns floor(x^(1/n)). Newton iterates descend from a binary
+// integerRoot returns floor(x^(1/n)). Newton iterates descend from an exact
 // upper bound. A stationary or increasing next iterate certifies the floor.
 func integerRoot(x *big.Int, n int64) (*big.Int, bool) {
 	if x.Sign() == 0 {
@@ -47,16 +48,49 @@ func integerRoot(x *big.Int, n int64) (*big.Int, bool) {
 	if n >= int64(x.BitLen()) {
 		return big.NewInt(1), true
 	}
-	guess := new(big.Int).Lsh(big.NewInt(1), uint((int64(x.BitLen())+n-1)/n))
 	exponent, degree := big.NewInt(n-1), big.NewInt(n)
+	guess := rootUpperBound(x, n, degree)
+	next := new(big.Int)
+	var power, weighted big.Int
 	for range maxIterations {
-		power := new(big.Int).Exp(guess, exponent, nil)
-		next := new(big.Int).Quo(x, power)
-		next.Add(next, new(big.Int).Mul(guess, exponent)).Quo(next, degree)
+		power.Exp(guess, exponent, nil)
+		next.Quo(x, &power)
+		weighted.Mul(guess, exponent)
+		next.Add(next, &weighted).Quo(next, degree)
 		if next.Cmp(guess) >= 0 {
 			return guess, true
 		}
-		guess = next
+		guess, next = next, guess
 	}
 	return nil, false
+}
+
+// rootUpperBound resolves a short prefix of the root with exact integer
+// comparisons before Newton refinement. A plain power-of-two upper bound can
+// be nearly twice the root; at high degrees Newton then shrinks it by only
+// about 1/n per step. Resolving bitlen(n)+1 prefix bits instead puts its
+// relative error below 1/n (or within one unit for a small integer root).
+func rootUpperBound(x *big.Int, n int64, degree *big.Int) *big.Int {
+	rootBits := (x.BitLen()-1)/int(n) + 1
+	prefixBits := min(rootBits, bits.Len64(uint64(n))+1)
+	shift := rootBits - prefixBits
+	// shift*n <= x.BitLen()-1. Public root budgets also bound n, so the
+	// prefix has at most 19 bits and fits native arithmetic.
+	prefix := new(big.Int).Rsh(x, uint(shift*int(n)))
+	lo, hi := uint64(1)<<uint(prefixBits-1), uint64(1)<<uint(prefixBits)
+	var candidate, power big.Int
+	for hi-lo > 1 {
+		mid := lo + (hi-lo)/2
+		candidate.SetUint64(mid)
+		power.Exp(&candidate, degree, nil)
+		if power.Cmp(prefix) <= 0 {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	// prefix < hi^n and x < (prefix+1)*2^(shift*n), hence this is
+	// strictly above the exact root. No floating-point estimate is used.
+	guess := new(big.Int).SetUint64(hi)
+	return guess.Lsh(guess, uint(shift))
 }
