@@ -109,11 +109,14 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 		return Decimal{}, fmt.Errorf("big.Rat cannot be nil: %w", ErrInvalidFormat)
 	}
 
-	num := new(big.Int).Set(value.Num())
+	num := value.Num()
 	den := value.Denom()
 
 	if num.Sign() == 0 {
 		return Zero, nil
+	}
+	if value.IsInt() {
+		return NewFromBigInt(num), nil
 	}
 
 	twos, rem := countFactor(den, 2)
@@ -129,7 +132,7 @@ func NewFromBigRat(value *big.Rat) (Decimal, error) {
 
 	// The reduced denominator is 2^twos * 5^fives. Supply only the
 	// missing factors instead of constructing 10^prec and dividing it again.
-	unscaled := num
+	unscaled := new(big.Int).Set(num)
 	if twos > fives {
 		unscaled.Mul(unscaled, new(big.Int).Exp(fiveInt, big.NewInt(int64(twos-fives)), nil))
 	} else if fives > twos {
@@ -154,17 +157,17 @@ func NewFromBigRatWithPrec(value *big.Rat, prec int, roundingMode RoundingMode) 
 		return Decimal{}, fmt.Errorf("big.Rat cannot be nil: %w", ErrInvalidFormat)
 	}
 
-	num := new(big.Int).Set(value.Num())
-	den := new(big.Int).Set(value.Denom())
-
-	if num.Sign() == 0 {
+	if value.Sign() == 0 {
 		return NewWithPrec(0, prec), nil
 	}
 
-	scaled := new(big.Int).Mul(num, safeGetPrecisionMultiplier(prec))
-	quotient, remainder := new(big.Int).QuoRem(scaled, den, new(big.Int))
+	// Own the result buffer; the rational's numerator and denominator stay read-only.
+	den := value.Denom()
+	quotient := new(big.Int).Mul(value.Num(), safeGetPrecisionMultiplier(prec))
+	var remainder big.Int
+	quotient.QuoRem(quotient, den, &remainder)
 	if remainder.Sign() != 0 {
-		applyDivisionRounding(quotient, remainder, den, roundingMode)
+		applyDivisionRounding(quotient, &remainder, den, roundingMode)
 	}
 
 	return Decimal{
@@ -1101,6 +1104,13 @@ func (d Decimal) BigRat() *big.Rat {
 // Float64 returns the nearest float64 value for d and whether it is exact.
 func (d Decimal) Float64() (float64, bool) {
 	d = initializeIfNeeded(d)
+	if d.i.Sign() == 0 {
+		return 0, true
+	}
+	if d.prec == 0 {
+		value, accuracy := d.i.Float64()
+		return value, accuracy == big.Exact
+	}
 	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float64()
 }
@@ -1108,6 +1118,15 @@ func (d Decimal) Float64() (float64, bool) {
 // Float32 returns the nearest float32 value for d and whether it is exact.
 func (d Decimal) Float32() (float32, bool) {
 	d = initializeIfNeeded(d)
+	if d.i.Sign() == 0 {
+		return 0, true
+	}
+	if d.prec == 0 {
+		// SetInt represents the integer exactly; Float32 rounds just once.
+		// Going through Float64 could lose which side of a Float32 midpoint it is on.
+		value, accuracy := new(big.Float).SetInt(d.i).Float32()
+		return value, accuracy == big.Exact
+	}
 	rat := new(big.Rat).SetFrac(d.i, safeGetPrecisionMultiplier(d.prec))
 	return rat.Float32()
 }

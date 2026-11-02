@@ -28,3 +28,26 @@ local scratch values for division and retain exactness and range checks.
 Tests compare against exact rationals and cover extreme scales and ownership.
 Benchmarks also include fractions, wide integers, tiny values, and scaled zero.
 No cache or shared mutable scratch storage is introduced.
+
+## Rational and floating conversions
+
+| Operation / input | ns/op before → after | B/op before → after | allocs/op before → after |
+| --- | ---: | ---: | ---: |
+| Float64 / integer | 80.8 → 2.64 | 96 → 0 | 7 → 0 |
+| Float32 / integer | 81.5 → 26.2 | 96 → 16 | 7 → 2 |
+| Float64 / wide integer | 218 → 60.7 | 712 → 256 | 9 → 2 |
+| Float32 / scaled zero | 592 → 1.66 | 1609 → 0 | 10 → 0 |
+| NewFromBigRat / integer | 92.9 → 19.7 | 176 → 40 | 10 → 2 |
+| NewFromBigRat / zero | 12.7 → 1.64 | 32 → 0 | 1 → 0 |
+| NewFromBigRatWithPrec / terminating | 62.6 → 39.6 | 160 → 96 | 5 → 2 |
+| NewFromBigRatWithPrec / repeating | 87.6 → 65.1 | 216 → 152 | 7 → 4 |
+
+Exact integer rationals bypass denominator factorization; rounded rational
+construction reuses its owned coefficient buffer and reads the input directly.
+Tests check all rounding modes against an independent rational oracle and verify
+input ownership. Integer floating conversions round directly to the target
+binary format; Float32 deliberately avoids conversion through Float64.
+Random wide integers, overflow, and an explicit double-rounding counterexample
+are compared with exact rational conversion. Fractional floating conversions
+keep their rational path (unchanged allocation counts); exact noninteger rational
+construction also retains its factorization path.
