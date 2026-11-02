@@ -22,11 +22,10 @@ Performance results cannot relax its rounding or state requirements.
    Review and CI provide complementary evidence; passing samples is not a proof
    for every possible input.
 
-## Proposed must-succeed corpus v1
+## Must-succeed corpus v1 (v0.8.0)
 
 [must_succeed.json](../testdata/must_succeed.json) contains 45 reviewable cases
-for the forthcoming release. Its concrete membership is proposed for maintainer
-review in this PR; no release version is assigned automatically.
+for v0.8.0. Its membership is part of the maintainer-approved release contract.
 
 The corpus covers all six default mathematical methods, higher input scale,
 60-place requests, exact positive and negative midpoint ties, large and tiny

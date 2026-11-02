@@ -1,6 +1,6 @@
 # دليل المستخدم (العربية)
 
-[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md)
 
 يوضح هذا الدليل أنماط استخدام عملية لـ `github.com/exc-works/decimal`.
 

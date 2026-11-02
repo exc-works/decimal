@@ -1,6 +1,6 @@
 # 使用者指南（繁體中文）
 
-[Numerical contract](numeric-contract.md) · [Unreleased changes](numeric-contract-migration.md)
+[Numerical contract](numeric-contract.md) · [v0.8.0 upgrade guide](numeric-contract-migration.md)
 
 本指南展示 `github.com/exc-works/decimal` 的實務使用模式。
 
